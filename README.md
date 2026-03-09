@@ -1,28 +1,31 @@
-# Mini app web — Tableau de bord Expéditions (v2)
+# Mini app web — Dashboard Caisses (Expéditions)
 
-**But :** déposer un fichier Excel hebdomadaire (.xlsx) et obtenir immédiatement des **KPIs** + **graphiques** interactifs (par semaine, top matériel, top IPO/SO), avec boutons **Réinitialiser** et **Exporter CSV**.
+**But :** déposer un fichier Excel hebdomadaire (.xlsx) et obtenir immédiatement des **KPIs** + **graphiques** interactifs (par semaine, répartition des caisses par dimensions), avec boutons **Réinitialiser** et **Exporter CSV**.
 
-## ✅ Nouveaux indicateurs ajoutés
-- **Poids moyen / colis**
-- **Volume moyen / colis**
-- **Score logistique (0–100)** basé sur volume relatif, cadence colis, proximité de la densité cible (≈500 kg/m³) et homogénéité des poids.
-- **Répartition par type d’emballages**
-  - Si la colonne *Colisage/Emballage/Type* existe → utilisée directement.
-  - Sinon, fallback par **classe dimensionnelle** calculée (S ≤0,3 m³ · M ≤0,9 m³ · L ≤2,0 m³ · XL >2,0 m³).
-- **Dimensions moyennes (L/l/h) par type**.
+## ✅ Indicateurs
+- **Nb caisses**
+- **Volume total (m³)**
+- **Poids brut total (kg)**
+- **Densité moyenne (kg/m³)**
+- **Poids moyen / caisse (kg)**
+- **Volume moyen / caisse (m³)**
+- **Score logistique (0–100)**
+
+## 📊 Graphiques
+- Nb **caisses** par semaine
+- Volume (m³) par semaine
+- Densité (kg/m³) par semaine
+- **Poids moyen / caisse** par semaine
+- **Répartition des caisses par dimensions (L×l×h en cm)** — regroupement par triplet Longueur×Largeur×Hauteur (arrondi au cm)
+
+> Supprimés : répartition par type d’emballage, dimensions moyennes par type, Top 10 Matériel, Top 10 IPO/SO.
 
 ## 🚀 Déploiement GitHub Pages
 1. Repo public (ex. `expeditions-dashboard`).
-2. Mettre `index.html`, `styles.css`, `app.js`, `README.md` à la racine.
-3. **Settings → Pages** → *Deploy from a branch* → **main/root**.
+2. Mettre `index.html`, `styles.css`, `app.js`, `README.md` à la **racine**.
+3. **Settings → Pages** → *Deploy from a branch* → **main / root**.
 4. URL : `https://<user>.github.io/expeditions-dashboard/`.
 
-## 🧪 Utilisation
-- Cliquer **Déposer/Choisir un fichier** et sélectionner l’Excel hebdo.
-- Filtres multi‑sélection : *Semaine*, *Matériel*, *IPO/SO*.
-- **Réinitialiser** : remet les filtres à zéro et reconstruit tous les graphes.
-- **Exporter** : CSV des données **filtrées** (avec type & dimensions si présents).
-
 ## 🧰 Tech
-- **Chart.js 4** (+ plugin **chartjs-plugin-datalabels**)
+- **Chart.js 4**
 - **SheetJS / XLSX** pour lire l’Excel **dans le navigateur** (aucun serveur)
