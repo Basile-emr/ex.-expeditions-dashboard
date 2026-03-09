@@ -1,3 +1,4 @@
+// filepath: app.js
 let RAW_ROWS = [];
 let charts = {};
 let filteredRows = [];
@@ -57,16 +58,38 @@ function loadExcel(file) {
 function parseExcel(data) {
     if (data.length < 2) return;
 
-    const headers = data[0].map(h => normalizeHeader(h));
+    const headers = data[0];
+    
+    // Première étape : normaliser les en-têtes bruts
+    const normalizedHeaders = headers.map(h => normalizeHeader(h));
+    
+    // Deuxième étape : déterminer les indices de L, W, H en analysant tous les en-têtes
+    let lIdx = -1, wIdx = -1, hIdx = -1;
+    
+    for (let i = 0; i < headers.length; i++) {
+        const raw = String(headers[i]).toLowerCase().trim();
+        if (raw.includes('longueur') && (raw.includes('cm') || raw.includes('colisage'))) {
+            lIdx = i;
+        } else if (raw.includes('largeur') && (raw.includes('cm') || raw.includes('colisage'))) {
+            wIdx = i;
+        } else if ((raw.includes('hauteur') || raw.includes('profondeur')) && (raw.includes('cm') || raw.includes('colisage'))) {
+            hIdx = i;
+        }
+    }
+
     RAW_ROWS = [];
 
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         const obj = {};
 
-        headers.forEach((h, idx) => {
-            obj[h] = row[idx] !== undefined ? row[idx] : '';
-        });
+        // Mapper les en-têtes normalisés
+        for (let j = 0; j < normalizedHeaders.length; j++) {
+            const hdr = normalizedHeaders[j];
+            if (hdr && hdr !== '' && hdr !== 'unknown') {
+                obj[hdr] = row[j] !== undefined ? row[j] : '';
+            }
+        }
 
         const semaine = parseInt(obj.semaine);
         if (isNaN(semaine)) continue;
@@ -78,13 +101,21 @@ function parseExcel(data) {
         let pbrut = parseFloat(String(obj.pbrut || '').replace(',', '.'));
         obj.pbrut = isNaN(pbrut) ? 0 : pbrut;
 
-        let L = parseFloat(String(obj.L || '').replace(',', '.'));
-        let W = parseFloat(String(obj.W || '').replace(',', '.'));
-        let H = parseFloat(String(obj.H || '').replace(',', '.'));
+        // Extraction des dimensions à partir des indices trouvés
+        let L = null, W = null, H = null;
 
-        if (isNaN(L)) L = null;
-        if (isNaN(W)) W = null;
-        if (isNaN(H)) H = null;
+        if (lIdx >= 0) {
+            L = parseFloat(String(row[lIdx] || '').replace(',', '.'));
+            if (isNaN(L)) L = null;
+        }
+        if (wIdx >= 0) {
+            W = parseFloat(String(row[wIdx] || '').replace(',', '.'));
+            if (isNaN(W)) W = null;
+        }
+        if (hIdx >= 0) {
+            H = parseFloat(String(row[hIdx] || '').replace(',', '.'));
+            if (isNaN(H)) H = null;
+        }
 
         obj.L = L;
         obj.W = W;
@@ -93,12 +124,14 @@ function parseExcel(data) {
         let vol = parseFloat(String(obj.vol || '').replace(',', '.'));
         if (isNaN(vol)) vol = null;
 
+        // Calcul du volume si absent mais dimensions présentes
         if (vol === null && L !== null && W !== null && H !== null) {
             vol = (L * W * H) / 1000000;
         }
 
         obj.vol = isNaN(vol) ? 0 : vol;
 
+        // Construction de la clé dimension
         if (obj.L !== null && obj.W !== null && obj.H !== null) {
             const lRound = Math.round(obj.L);
             const wRound = Math.round(obj.W);
@@ -124,21 +157,13 @@ function normalizeHeader(h) {
     if (s.includes('ipo') || s.includes('so')) return 'ipo';
     if (s.includes('poids') && (s.includes('brut') || s.includes('réel') || s.includes('reel'))) return 'pbrut';
     if (s.includes('volume') && (s.includes('m3') || s.includes('m³'))) return 'vol';
+    
+    // Meilleure détection pour Longueur, Largeur, Hauteur
     if (s.includes('longueur') || s.includes('length')) return 'L';
     if (s.includes('largeur') || s.includes('width')) return 'W';
-    if (s.includes('hauteur') || s.includes('height') || s.includes('profondeur')) return 'H';
+    if ((s.includes('hauteur') || s.includes('height') || s.includes('profondeur')) && !s.includes('longueur')) return 'H';
     
-    if (s.includes('cm')) {
-        const idx = RAW_ROWS.length;
-        if (!window._cmIndex) window._cmIndex = 0;
-        const mapCm = ['L', 'W', 'H'];
-        if (window._cmIndex < 3) {
-            window._cmIndex++;
-            return mapCm[window._cmIndex - 1];
-        }
-    }
-    
-    return s;
+    return '';
 }
 
 function populateFilters() {
