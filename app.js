@@ -56,18 +56,36 @@ function loadExcel(file) {
 }
 
 function parseExcel(data) {
-    if (data.length < 2) return;
+    if (data.length < 4) return;
 
-    const headers = data[0];
+    // Fusionner les deux lignes d'en-têtes
+    const headerLine1 = data[0].map(h => String(h || '').toLowerCase().trim());
+    const headerLine2 = data[1].map(h => String(h || '').toLowerCase().trim());
     
-    // Normaliser les en-têtes
+    const headers = headerLine1.map((h, idx) => {
+        // Si line2 a un en-tête à cette position et line1 ne l'a pas, utiliser line2
+        if (!h && headerLine2[idx]) {
+            return headerLine2[idx];
+        }
+        return h;
+    });
+    
+    // Normaliser les en-têtes fusionnés
     const normalizedHeaders = headers.map(h => normalizeHeader(h));
 
     RAW_ROWS = [];
 
-    for (let i = 1; i < data.length; i++) {
+    // Démarrer à la ligne 3 (index 2) car les lignes 0-2 contiennent en-têtes
+    for (let i = 3; i < data.length; i++) {
         const row = data[i];
+        
+        // Vérifier que la première colonne (SEMAINE) est valide
+        const semaineRaw = row[0];
+        const semaine = parseInt(semaineRaw);
+        if (isNaN(semaine)) continue;
+
         const obj = {};
+        obj.semaine = semaine;
 
         // Mapper les en-têtes normalisés
         for (let j = 0; j < normalizedHeaders.length; j++) {
@@ -77,10 +95,6 @@ function parseExcel(data) {
             }
         }
 
-        const semaine = parseInt(obj.semaine);
-        if (isNaN(semaine)) continue;
-
-        obj.semaine = semaine;
         obj.date = obj.date || '';
         obj.ipo = obj.ipo || '';
 
