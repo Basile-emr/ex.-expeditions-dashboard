@@ -60,22 +60,8 @@ function parseExcel(data) {
 
     const headers = data[0];
     
-    // Première étape : normaliser les en-têtes bruts
+    // Normaliser les en-têtes
     const normalizedHeaders = headers.map(h => normalizeHeader(h));
-    
-    // Deuxième étape : déterminer les indices de L, W, H en analysant tous les en-têtes
-    let lIdx = -1, wIdx = -1, hIdx = -1;
-    
-    for (let i = 0; i < headers.length; i++) {
-        const raw = String(headers[i]).toLowerCase().trim();
-        if (raw.includes('longueur') && (raw.includes('cm') || raw.includes('colisage'))) {
-            lIdx = i;
-        } else if (raw.includes('largeur') && (raw.includes('cm') || raw.includes('colisage'))) {
-            wIdx = i;
-        } else if ((raw.includes('hauteur') || raw.includes('profondeur')) && (raw.includes('cm') || raw.includes('colisage'))) {
-            hIdx = i;
-        }
-    }
 
     RAW_ROWS = [];
 
@@ -101,19 +87,19 @@ function parseExcel(data) {
         let pbrut = parseFloat(String(obj.pbrut || '').replace(',', '.'));
         obj.pbrut = isNaN(pbrut) ? 0 : pbrut;
 
-        // Extraction des dimensions à partir des indices trouvés
+        // Extraction des dimensions directement des colonnes F, G, H (indices 5, 6, 7)
         let L = null, W = null, H = null;
 
-        if (lIdx >= 0) {
-            L = parseFloat(String(row[lIdx] || '').replace(',', '.'));
+        if (row.length > 5) {
+            L = parseFloat(String(row[5] || '').replace(',', '.'));
             if (isNaN(L)) L = null;
         }
-        if (wIdx >= 0) {
-            W = parseFloat(String(row[wIdx] || '').replace(',', '.'));
+        if (row.length > 6) {
+            W = parseFloat(String(row[6] || '').replace(',', '.'));
             if (isNaN(W)) W = null;
         }
-        if (hIdx >= 0) {
-            H = parseFloat(String(row[hIdx] || '').replace(',', '.'));
+        if (row.length > 7) {
+            H = parseFloat(String(row[7] || '').replace(',', '.'));
             if (isNaN(H)) H = null;
         }
 
@@ -157,11 +143,6 @@ function normalizeHeader(h) {
     if (s.includes('ipo') || s.includes('so')) return 'ipo';
     if (s.includes('poids') && (s.includes('brut') || s.includes('réel') || s.includes('reel'))) return 'pbrut';
     if (s.includes('volume') && (s.includes('m3') || s.includes('m³'))) return 'vol';
-    
-    // Meilleure détection pour Longueur, Largeur, Hauteur
-    if (s.includes('longueur') || s.includes('length')) return 'L';
-    if (s.includes('largeur') || s.includes('width')) return 'W';
-    if ((s.includes('hauteur') || s.includes('height') || s.includes('profondeur')) && !s.includes('longueur')) return 'H';
     
     return '';
 }
