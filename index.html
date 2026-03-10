@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Expéditions - Gestion Complète</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- En-tête principal -->
+        <header class="app-header">
+            <h1>📊 Dashboard Expéditions en Caisses</h1>
+            <p class="subtitle">Gestion complète avec archivage et édition</p>
+        </header>
+
+        <!-- Navigation par onglets -->
+        <nav class="tabs-nav">
+            <button class="tab-btn active" data-tab="upload">📁 Charger</button>
+            <button class="tab-btn" data-tab="archives">🗂️ Archives</button>
+            <button class="tab-btn" data-tab="data">📋 Données</button>
+            <button class="tab-btn" data-tab="dashboard">📈 Dashboard</button>
+        </nav>
+
+        <!-- Contenu des onglets -->
+        <div class="tabs-container">
+
+            <!-- ONGLET 1 : UPLOAD -->
+            <div class="tab-content active" id="tab-upload">
+                <div class="upload-section">
+                    <div class="dropzone" id="dropzone">
+                        <p>📁 Déposez votre fichier Excel ici</p>
+                        <p class="small">ou</p>
+                        <label for="fileInput" class="file-button">Choisir un fichier</label>
+                        <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+                    </div>
+                    <div id="uploadStatus" class="upload-status" style="display: none;">
+                        <p id="uploadMessage"></p>
+                        <button id="archiveBtn" class="btn btn-primary" style="display: none;">💾 Archiver ce fichier</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ONGLET 2 : ARCHIVES -->
+            <div class="tab-content" id="tab-archives">
+                <div class="archives-section">
+                    <h2>Archives des fichiers</h2>
+                    <div id="archivesList" class="archives-list">
+                        <p class="empty-message">Aucune archive pour le moment</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ONGLET 3 : DONNÉES -->
+            <div class="tab-content" id="tab-data">
+                <div class="data-section">
+                    <h2>Éditeur de données</h2>
+                    <div class="data-toolbar">
+                        <button id="addRowBtn" class="btn btn-secondary">+ Ajouter une ligne</button>
+                        <button id="deleteRowBtn" class="btn btn-secondary">🗑️ Supprimer les lignes sélectionnées</button>
+                        <button id="exportDataBtn" class="btn btn-secondary">💾 Exporter en CSV</button>
+                    </div>
+                    <div id="dataTableContainer" class="data-table-container">
+                        <p class="empty-message">Chargez un fichier d'abord</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ONGLET 4 : DASHBOARD -->
+            <div class="tab-content" id="tab-dashboard">
+                <div class="dashboard-section">
+                    <div class="dashboard-filters">
+                        <div class="filter-group">
+                            <label for="dashSemSelect">Semaines :</label>
+                            <select id="dashSemSelect" multiple>
+                                <option value="">-- Aucune données --</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="dashIpoSelect">IPO / SO :</label>
+                            <select id="dashIpoSelect" multiple>
+                                <option value="">-- Aucune données --</option>
+                            </select>
+                        </div>
+                        <button id="dashResetBtn" class="btn btn-secondary">🔄 Réinitialiser</button>
+                        <button id="dashExportBtn" class="btn btn-secondary">💾 Exporter filtré</button>
+                    </div>
+
+                    <div class="kpis-section">
+                        <div class="kpi-card">
+                            <div class="kpi-label">Nb caisses</div>
+                            <div class="kpi-value" id="kpiNbCaisses">–</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Volume total (m³)</div>
+                            <div class="kpi-value" id="kpiVol">–</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Poids brut total (kg)</div>
+                            <div class="kpi-value" id="kpiPBrut">–</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Densité moyenne (kg/m³)</div>
+                            <div class="kpi-value" id="kpiDensite">–</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Poids moyen / caisse (kg)</div>
+                            <div class="kpi-value" id="kpiPoidsMoy">–</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-label">Volume moyen / caisse (m³)</div>
+                            <div class="kpi-value" id="kpiVolMoy">–</div>
+                        </div>
+                        <div class="kpi-card score-card">
+                            <div class="kpi-label">Score logistique</div>
+                            <div class="kpi-value" id="kpiScore">–</div>
+                            <div class="score-note" id="scoreNote"></div>
+                        </div>
+                    </div>
+
+                    <div class="charts-section">
+                        <div class="chart-container">
+                            <h3>Nb caisses par semaine</h3>
+                            <canvas id="chartNb"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <h3>Volume (m³) par semaine</h3>
+                            <canvas id="chartVol"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <h3>Densité (kg/m³) par semaine</h3>
+                            <canvas id="chartDens"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <h3>Poids moyen / caisse par semaine (kg)</h3>
+                            <canvas id="chartPoidsMoy"></canvas>
+                        </div>
+                        <div class="chart-container full-width">
+                            <h3>Répartition des caisses par dimensions (Top 12)</h3>
+                            <canvas id="chartDimCaisse"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
