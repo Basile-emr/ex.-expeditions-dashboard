@@ -132,9 +132,13 @@ function parseExcelFile(data) {
         const semaine = parseInt(row[0]);
         if (isNaN(semaine)) continue;
 
+        const dateReception = parseDate(row[1]);
+        const heureReception = row[1] ? extractHour(row[1]) : 0;
+
         const obj = {
             semaine,
-            date: row[1] || '',
+            dateReception: dateReception ? dateReception.toISOString().split('T')[0] : '',
+            heureReception,
             ipo: row[2] || '',
             pbrut: parseFloat(String(row[8] || '').replace(',', '.')) || 0,
             vol: parseFloat(String(row[9] || '').replace(',', '.')) || 0,
@@ -142,6 +146,22 @@ function parseExcelFile(data) {
             W: parseFloat(String(row[6] || '').replace(',', '.')) || null,
             H: parseFloat(String(row[7] || '').replace(',', '.')) || null
         };
+
+        // Calcular tempo estimado no quai (em horas)
+        // Se houver uma coluna de date de saída/depart, usar essa
+        // Senão estimar baseado na semana
+        if (row[10] && row[10] !== '') {
+            const dateDepart = parseDate(row[10]);
+            if (dateDepart && dateReception) {
+                obj.dwellTimeHours = Math.round((dateDepart - dateReception) / (1000 * 60 * 60));
+            }
+        } else {
+            // Estimativa: tempo baseado na densidade e volume
+            const dens = obj.vol > 0 ? obj.pbrut / obj.vol : 0;
+            // Fórmula: tempo estimado = (volume em litros / 100) * (1 + dens/500)
+            // Isso dá tipicamente 0-48 horas dependendo do tamanho
+            obj.dwellTimeHours = Math.max(0.5, Math.min(48, (obj.vol * 1000 / 100) * (1 + dens / 500)));
+        }
 
         if (obj.vol === 0 && obj.L && obj.W && obj.H) {
             obj.vol = (obj.L * obj.W * obj.H) / 1000000;
@@ -155,6 +175,42 @@ function parseExcelFile(data) {
     }
 
     FILTERED_ROWS = JSON.parse(JSON.stringify(CURRENT_ROWS));
+}
+
+function parseDate(str) {
+    if (!str) return null;
+    const s = String(str).trim();
+    // Tentar múltiplos formatos
+    const formats = [
+        /(\d{1,2})\/(\d{1,2})\/(\d{4})/,
+        /(\d{4})-(\d{1,2})-(\d{1,2})/,
+        /(\d{1,2})-(\d{1,2})-(\d{4})/
+    ];
+    
+    for (let fmt of formats) {
+        const match = s.match(fmt);
+        if (match) {
+            let d, m, y;
+            if (match[3].length === 4) {
+                d = parseInt(match[1]);
+                m = parseInt(match[2]);
+                y = parseInt(match[3]);
+            } else {
+                y = parseInt(match[1]);
+                m = parseInt(match[2]);
+                d = parseInt(match[3]);
+            }
+            return new Date(y, m - 1, d);
+        }
+    }
+    return null;
+}
+
+function extractHour(str) {
+    if (!str) return 0;
+    const s = String(str).trim();
+    const match = s.match(/(\d{1,2}):(\d{2})/);
+    return match ? parseInt(match[1]) : 0;
 }
 
 // ===== FICHE TAB =====
@@ -242,17 +298,42 @@ function updateFicheKPIs() {
     const dens = vol > 0 ? pbrut / vol : 0;
     const poidsMoy = nb > 0 ? pbrut / nb : 0;
     const volMoy = nb > 0 ? vol / nb : 0;
+    const dwellTimeMoy = nb > 0 ? FILTERED_ROWS.reduce((s, r) => s + (r.dwellTimeHours || 0), 0) / nb : 0;
 
-    document.getElementById('fiche-kpi-nb').textContent = nb > 0 ? nb : '–';
-    document.getElementById('fiche-kpi-vol').textContent = nb > 0 ? vol.toFixed(2) : '–';
-    document.getElementById('fiche-kpi-pbrut').textContent = nb > 0 ? pbrut.toFixed(2) : '–';
-    document.getElementById('fiche-kpi-dens').textContent = nb > 0 ? dens.toFixed(2) : '–';
-    document.getElementById('fiche-kpi-poids-moy').textContent = nb > 0 ? poidsMoy.toFixed(2) : '–';
-    document.getElementById('fiche-kpi-vol-moy').textContent = nb > 0 ? volMoy.toFixed(4) : '–';
+    // Métriques de tempo
+    const minDwell = nb > 0 ? Math.min(...FILTERED_ROWS.map(r => r.dwellTimeHours || 0)) : 0;
+    const maxDwell = nb > 0 ? Math.max(...FILTERED_ROWS.map(r => r.dwellTimeHours || 0)) : 0;
 
+    // Densidade de utilização: (vol / pbrut) inversamente
+    const utilisationDensity = dens > 0 ? (pbrut / (vol * 1000)) : 0;
+
+    document.getElementById('fiche-kpi-nb').innerHTML = `<div class="kpi-value">${nb}</div><div class="kpi-label">Caisses</div>`;
+    document.getElementById('fiche-kpi-vol').innerHTML = `<div class="kpi-value">${vol.toFixed(2)}</div><div class="kpi-label">Volume m³</div>`;
+    document.getElementById('fiche-kpi-pbrut').innerHTML = `<div class="kpi-value">${pbrut.toFixed(0)}</div><div class="kpi-label">Poids kg</div>`;
+    document.getElementById('fiche-kpi-dens').innerHTML = `<div class="kpi-value">${dens.toFixed(1)}</div><div class="kpi-label">Densité kg/m³</div>`;
+    document.getElementById('fiche-kpi-poids-moy').innerHTML = `<div class="kpi-value">${poidsMoy.toFixed(1)}</div><div class="kpi-label">Poids moy/caisse</div>`;
+    document.getElementById('fiche-kpi-vol-moy').innerHTML = `<div class="kpi-value">${volMoy.toFixed(4)}</div><div class="kpi-label">Vol moy/caisse</div>`;
+    document.getElementById('fiche-kpi-score').innerHTML = `<div class="kpi-value">${calcScore(FILTERED_ROWS).total}</div><div class="kpi-label">Score</div>`;
+
+    // Atualizar a nota de score
     const score = calcScore(FILTERED_ROWS);
-    document.getElementById('fiche-kpi-score').textContent = score.total;
     document.getElementById('fiche-score-note').textContent = score.note;
+
+    // Adicionar métricas de dwell time
+    const dwellNote = document.getElementById('fiche-dwell-info');
+    if (dwellNote) {
+        dwellNote.innerHTML = `
+            <div class="metric-row">
+                <span>Tempo no quai (médio):</span> <strong>${dwellTimeMoy.toFixed(1)} h</strong>
+            </div>
+            <div class="metric-row">
+                <span>Min/Max:</span> <strong>${minDwell.toFixed(1)}h - ${maxDwell.toFixed(1)}h</strong>
+            </div>
+            <div class="metric-row">
+                <span>Throughput:</span> <strong>${nb > 0 ? (nb / Math.max(1, dwellTimeMoy)).toFixed(1) : '–'}</strong> caisses/heure
+            </div>
+        `;
+    }
 }
 
 function calcScore(rows) {
@@ -477,13 +558,74 @@ function renderArchiveKPIs(id) {
     const vol = CURRENT_ROWS.reduce((s, r) => s + (r.vol || 0), 0);
     const pbrut = CURRENT_ROWS.reduce((s, r) => s + (r.pbrut || 0), 0);
     const dens = vol > 0 ? pbrut / vol : 0;
+    const dwellMoy = nb > 0 ? CURRENT_ROWS.reduce((s, r) => s + (r.dwellTimeHours || 0), 0) / nb : 0;
 
-    document.getElementById(`arch-kpi-nb-${id}`).innerHTML = `<div class="kpi-value">${nb}</div><div class="kpi-label">Nb caisses</div>`;
-    document.getElementById(`arch-kpi-vol-${id}`).innerHTML = `<div class="kpi-value">${vol.toFixed(2)}</div><div class="kpi-label">Volume (m³)</div>`;
-    document.getElementById(`arch-kpi-pbrut-${id}`).innerHTML = `<div class="kpi-value">${pbrut.toFixed(2)}</div><div class="kpi-label">Poids brut (kg)</div>`;
-    document.getElementById(`arch-kpi-dens-${id}`).innerHTML = `<div class="kpi-value">${dens.toFixed(2)}</div><div class="kpi-label">Densité</div>`;
-    document.getElementById(`arch-kpi-poids-${id}`).innerHTML = `<div class="kpi-value">${(pbrut/nb).toFixed(2)}</div><div class="kpi-label">Poids moy</div>`;
-    document.getElementById(`arch-kpi-vol-moy-${id}`).innerHTML = `<div class="kpi-value">${(vol/nb).toFixed(4)}</div><div class="kpi-label">Vol moy</div>`;
+    // Métricas especiais para archives
+    // Nb moyen de commandes par mois
+    const ipos = [...new Set(CURRENT_ROWS.map(r => r.ipo).filter(x => x))];
+    const nbUniqueIpo = ipos.length;
+    
+    // Períodos dos dados
+    const dates = CURRENT_ROWS
+        .filter(r => r.dateReception)
+        .map(r => new Date(r.dateReception))
+        .sort((a, b) => a - b);
+    
+    let nbMonths = 1;
+    if (dates.length >= 2) {
+        const firstDate = dates[0];
+        const lastDate = dates[dates.length - 1];
+        nbMonths = Math.max(1, Math.round((lastDate - firstDate) / (1000 * 60 * 60 * 24 * 30.5)) + 1);
+    }
+
+    const nbIpoParMois = (nbUniqueIpo / nbMonths).toFixed(1);
+    
+    // Nb commandes par heure (estimé)
+    const heuresUniques = new Set(CURRENT_ROWS.map(r => r.heureReception).filter(h => h > 0)).size;
+    const nbIpoParHeure = heuresUniques > 0 ? (nbUniqueIpo / heuresUniques).toFixed(1) : '–';
+
+    // Velocidade de traitement
+    const velocidadeTraitement = dwellMoy > 0 ? (nb / (dwellMoy / 24)).toFixed(1) : '–';
+
+    // Velocidade de expédition
+    const totalWeight = pbrut;
+    const velocidadeExpedition = dwellMoy > 0 ? (totalWeight / dwellMoy).toFixed(1) : '–';
+
+    document.getElementById(`arch-kpi-nb-${id}`).innerHTML = `
+        <div class="kpi-value">${nb}</div>
+        <div class="kpi-label">Caisses</div>
+        <div class="kpi-meta">${nbUniqueIpo} commandes</div>
+    `;
+    
+    document.getElementById(`arch-kpi-vol-${id}`).innerHTML = `
+        <div class="kpi-value">${vol.toFixed(2)}</div>
+        <div class="kpi-label">Volume m³</div>
+        <div class="kpi-meta">${(vol / nb).toFixed(4)}/caisse</div>
+    `;
+    
+    document.getElementById(`arch-kpi-pbrut-${id}`).innerHTML = `
+        <div class="kpi-value">${pbrut.toFixed(0)}</div>
+        <div class="kpi-label">Poids kg</div>
+        <div class="kpi-meta">${(pbrut / nb).toFixed(1)}/caisse</div>
+    `;
+    
+    document.getElementById(`arch-kpi-dens-${id}`).innerHTML = `
+        <div class="kpi-value">${dens.toFixed(1)}</div>
+        <div class="kpi-label">Densité</div>
+        <div class="kpi-meta">Quai: ${dwellMoy.toFixed(1)}h</div>
+    `;
+    
+    document.getElementById(`arch-kpi-poids-${id}`).innerHTML = `
+        <div class="kpi-value">${nbIpoParMois}</div>
+        <div class="kpi-label">IPO/mois</div>
+        <div class="kpi-meta">${nbIpoParHeure}/heure</div>
+    `;
+    
+    document.getElementById(`arch-kpi-vol-moy-${id}`).innerHTML = `
+        <div class="kpi-value">${velocidadeTraitement}</div>
+        <div class="kpi-label">Throughput</div>
+        <div class="kpi-meta">caisses/jour</div>
+    `;
 }
 
 function renderArchiveCharts(id) {
@@ -556,30 +698,139 @@ document.getElementById('compRunBtn')?.addEventListener('click', () => {
 });
 
 function compareRows(r1, r2) {
-    const nom1 = CURRENT_FICHE?.name || 'Fiche actuelle';
-    const nom2 = ARCHIVES.find(a => a.id === parseInt(document.getElementById('compSelect2').value.split('_')[1]))?.name || '';
+    const fileLabel1 = document.getElementById('compSelect1').value === 'current' ? CURRENT_FICHE?.name || 'Fiche actuelle' : '';
+    const fileLabel2 = '';
     
+    // Calcul des métriques pour chaque fichier
+    const calc = (rows) => {
+        const nb = rows.length;
+        const vol = rows.reduce((s, r) => s + (r.vol || 0), 0);
+        const pbrut = rows.reduce((s, r) => s + (r.pbrut || 0), 0);
+        const dens = vol > 0 ? pbrut / vol : 0;
+        const dwellMoy = nb > 0 ? rows.reduce((s, r) => s + (r.dwellTimeHours || 0), 0) / nb : 0;
+        const poidsMoy = nb > 0 ? pbrut / nb : 0;
+        const volMoy = nb > 0 ? vol / nb : 0;
+        const ipos = [...new Set(rows.map(r => r.ipo).filter(x => x))].length;
+        
+        return { nb, vol, pbrut, dens, dwellMoy, poidsMoy, volMoy, ipos };
+    };
+
+    const m1 = calc(r1);
+    const m2 = calc(r2);
+
+    // Calcul des différences en pourcentage
+    const pctDiff = (v1, v2) => {
+        if (v2 === 0 || v2 === null) return v1 === 0 ? 0 : 999;
+        return ((v1 - v2) / v2 * 100).toFixed(1);
+    };
+
     return {
-        nom1, nom2,
-        nb1: r1.length, nb2: r2.length,
-        vol1: r1.reduce((s, r) => s + (r.vol || 0), 0),
-        vol2: r2.reduce((s, r) => s + (r.vol || 0), 0),
-        pbrut1: r1.reduce((s, r) => s + (r.pbrut || 0), 0),
-        pbrut2: r2.reduce((s, r) => s + (r.pbrut || 0), 0)
+        nom1: fileLabel1,
+        nom2: fileLabel2,
+        nb1: m1.nb, nb2: m2.nb,
+        vol1: m1.vol, vol2: m2.vol,
+        pbrut1: m1.pbrut, pbrut2: m2.pbrut,
+        dens1: m1.dens, dens2: m2.dens,
+        dwellMoy1: m1.dwellMoy, dwellMoy2: m2.dwellMoy,
+        poidsMoy1: m1.poidsMoy, poidsMoy2: m1.poidsMoy,
+        ipos1: m1.ipos, ipos2: m2.ipos,
+        pctNb: pctDiff(m1.nb, m2.nb),
+        pctVol: pctDiff(m1.vol, m2.vol),
+        pctPbrut: pctDiff(m1.pbrut, m2.pbrut),
+        pctDwell: pctDiff(m1.dwellMoy, m2.dwellMoy)
     };
 }
 
 function displayComparison(result) {
     const comp = document.getElementById('comparisonResult');
+    
+    // Helper para mostrar diferenças com cores
+    const diffClass = (val) => {
+        return val < 0 ? ' class="diff negative"' : ' class="diff"';
+    };
+    
+    const pctClass = (pct) => {
+        const p = parseFloat(pct);
+        if (isNaN(p)) return '';
+        return p < 0 ? ' class="pct negative"' : ' class="pct"';
+    };
+
     comp.innerHTML = `
         <table class="comparison-table">
-            <tr><th>Métrique</th><th>${result.nom1}</th><th>${result.nom2}</th><th>Différence</th></tr>
-            <tr><td>Nb caisses</td><td>${result.nb1}</td><td>${result.nb2}</td><td>${result.nb1 - result.nb2}</td></tr>
-            <tr><td>Volume (m³)</td><td>${result.vol1.toFixed(2)}</td><td>${result.vol2.toFixed(2)}</td><td>${(result.vol1 - result.vol2).toFixed(2)}</td></tr>
-            <tr><td>Poids brut (kg)</td><td>${result.pbrut1.toFixed(2)}</td><td>${result.pbrut2.toFixed(2)}</td><td>${(result.pbrut1 - result.pbrut2).toFixed(2)}</td></tr>
-            <tr><td>Densité (kg/m³)</td><td>${(result.vol1 > 0 ? result.pbrut1 / result.vol1 : 0).toFixed(2)}</td><td>${(result.vol2 > 0 ? result.pbrut2 / result.vol2 : 0).toFixed(2)}</td><td>–</td></tr>
+            <thead>
+                <tr>
+                    <th>Métrique</th>
+                    <th>${result.nom1 || 'Fiche Actuelle'}</th>
+                    <th>${result.nom2 || 'Archive'}</th>
+                    <th>Différence</th>
+                    <th>% Variation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Nb caisses</strong></td>
+                    <td>${result.nb1}</td>
+                    <td>${result.nb2}</td>
+                    <td${diffClass(result.nb1 - result.nb2)}>${Math.abs(result.nb1 - result.nb2)}</td>
+                    <td${pctClass(result.pctNb)}>${result.pctNb}%</td>
+                </tr>
+                <tr>
+                    <td><strong>Volume (m³)</strong></td>
+                    <td>${result.vol1.toFixed(2)}</td>
+                    <td>${result.vol2.toFixed(2)}</td>
+                    <td${diffClass(result.vol1 - result.vol2)}>${Math.abs((result.vol1 - result.vol2).toFixed(2))}</td>
+                    <td${pctClass(result.pctVol)}>${result.pctVol}%</td>
+                </tr>
+                <tr>
+                    <td><strong>Poids brut (kg)</strong></td>
+                    <td>${result.pbrut1.toFixed(0)}</td>
+                    <td>${result.pbrut2.toFixed(0)}</td>
+                    <td${diffClass(result.pbrut1 - result.pbrut2)}>${Math.abs((result.pbrut1 - result.pbrut2).toFixed(0))}</td>
+                    <td${pctClass(result.pctPbrut)}>${result.pctPbrut}%</td>
+                </tr>
+                <tr>
+                    <td><strong>Densité (kg/m³)</strong></td>
+                    <td>${result.dens1.toFixed(1)}</td>
+                    <td>${result.dens2.toFixed(1)}</td>
+                    <td${diffClass(result.dens1 - result.dens2)}>${Math.abs((result.dens1 - result.dens2).toFixed(1))}</td>
+                    <td class="pct">–</td>
+                </tr>
+                <tr class="highlight">
+                    <td><strong>Tempo no quai (h)</strong></td>
+                    <td>${result.dwellMoy1.toFixed(1)}</td>
+                    <td>${result.dwellMoy2.toFixed(1)}</td>
+                    <td${diffClass(result.dwellMoy1 - result.dwellMoy2)}>${Math.abs((result.dwellMoy1 - result.dwellMoy2).toFixed(1))}</td>
+                    <td${pctClass(result.pctDwell)}>${result.pctDwell}%</td>
+                </tr>
+                <tr>
+                    <td><strong>Poids moy/caisse (kg)</strong></td>
+                    <td>${result.poidsMoy1.toFixed(1)}</td>
+                    <td>${result.poidsMoy2.toFixed(1)}</td>
+                    <td${diffClass(result.poidsMoy1 - result.poidsMoy2)}>${Math.abs((result.poidsMoy1 - result.poidsMoy2).toFixed(1))}</td>
+                    <td class="pct">–</td>
+                </tr>
+                <tr>
+                    <td><strong>Nb commandes distintas</strong></td>
+                    <td>${result.ipos1}</td>
+                    <td>${result.ipos2}</td>
+                    <td${diffClass(result.ipos1 - result.ipos2)}>${Math.abs(result.ipos1 - result.ipos2)}</td>
+                    <td${pctClass(pctDiff(result.ipos1, result.ipos2))}>${pctDiff(result.ipos1, result.ipos2)}%</td>
+                </tr>
+                <tr>
+                    <td><strong>Throughput (caisses/dia)</strong></td>
+                    <td>${result.dwellMoy1 > 0 ? (result.nb1 / (result.dwellMoy1 / 24)).toFixed(1) : '–'}</td>
+                    <td>${result.dwellMoy2 > 0 ? (result.nb2 / (result.dwellMoy2 / 24)).toFixed(1) : '–'}</td>
+                    <td class="diff">–</td>
+                    <td class="pct">–</td>
+                </tr>
+            </tbody>
         </table>
     `;
+}
+
+function pctDiff(v1, v2) {
+    if (v2 === 0 || v2 === null) return v1 === 0 ? 0 : 999;
+    return ((v1 - v2) / v2 * 100).toFixed(1);
 }
 
 // ===== OUTILS UTILS =====
