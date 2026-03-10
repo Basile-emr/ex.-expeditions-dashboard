@@ -479,6 +479,113 @@ select:focus {
     font-style: italic;
 }
 
+/* ===== MÉTRIQUES DE DWELL TIME ===== */
+.metrics-dwell {
+    background: linear-gradient(135deg, var(--bg-secondary), var(--bg-tertiary));
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--warning);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    flex: 1;
+    min-width: 250px;
+}
+
+.metric-row span {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    flex: 1;
+}
+
+.metric-row strong {
+    color: var(--accent-light);
+    font-weight: 700;
+    font-size: 1rem;
+    white-space: nowrap;
+}
+
+/* ===== RAPPORT TABLE STYLING ===== */
+.comparison-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.comparison-table thead {
+    background-color: var(--bg-tertiary);
+}
+
+.comparison-table th {
+    padding: 1rem;
+    text-align: left;
+    color: var(--accent-light);
+    font-weight: 700;
+    border-bottom: 2px solid var(--border);
+    font-size: 0.9rem;
+}
+
+.comparison-table td {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+}
+
+.comparison-table .metric-row {
+    display: table-row;
+    gap: 0;
+    padding: 0;
+    min-width: auto;
+}
+
+.comparison-table tr:hover {
+    background-color: rgba(0, 153, 255, 0.1);
+}
+
+.comparison-table tr.highlight:hover {
+    background-color: rgba(255, 170, 0, 0.1);
+}
+
+.comparison-table .highlight {
+    background-color: rgba(255, 170, 0, 0.05);
+    font-weight: 600;
+}
+
+.comparison-table .diff {
+    color: #4ade80;
+    font-weight: 600;
+}
+
+.comparison-table .diff:before {
+    content: '+';
+}
+
+.comparison-table tr:has(.diff.negative) .diff:before {
+    content: '–';
+}
+
+.comparison-table .pct {
+    color: #4ade80;
+    font-weight: 600;
+}
+
+.comparison-table .pct.negative {
+    color: var(--danger);
+}
+
 @media (max-width: 1200px) {
     .charts-grid {
         grid-template-columns: 1fr;
