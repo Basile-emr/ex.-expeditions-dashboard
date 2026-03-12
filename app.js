@@ -169,6 +169,10 @@ function parseExcelFile(data) {
 
         if (obj.L && obj.W && obj.H) {
             obj.dimKey = `${Math.round(obj.L)}×${Math.round(obj.W)}×${Math.round(obj.H)} cm`;
+            // Déterminer si c'est une caisse ou un colis : caisse si une dimension > 49cm
+            obj.type = Math.max(obj.L, obj.W, obj.H) > 49 ? 'caisse' : 'colis';
+        } else {
+            obj.type = 'colis';
         }
 
         CURRENT_ROWS.push(obj);
@@ -631,7 +635,7 @@ function renderArchiveKPIs(id) {
 function renderArchiveCharts(id) {
     // Simplified version with key charts only
 }
-
+ 
 function closeArchiveDashboard(id) {
     document.getElementById(`arch-${id}`).remove();
 }
@@ -703,16 +707,16 @@ function compareRows(r1, r2) {
     
     // Calcul des métriques pour chaque fichier
     const calc = (rows) => {
-        const nb = rows.length;
+        const nbTotal = rows.length;
+        const nbCaisses = rows.filter(r => r.type === 'caisse').length;
+        const nbColis = rows.filter(r => r.type === 'colis').length;
         const vol = rows.reduce((s, r) => s + (r.vol || 0), 0);
         const pbrut = rows.reduce((s, r) => s + (r.pbrut || 0), 0);
         const dens = vol > 0 ? pbrut / vol : 0;
-        const dwellMoy = nb > 0 ? rows.reduce((s, r) => s + (r.dwellTimeHours || 0), 0) / nb : 0;
-        const poidsMoy = nb > 0 ? pbrut / nb : 0;
-        const volMoy = nb > 0 ? vol / nb : 0;
-        const ipos = [...new Set(rows.map(r => r.ipo).filter(x => x))].length;
+        const dwellMoy = nbTotal > 0 ? rows.reduce((s, r) => s + (r.dwellTimeHours || 0), 0) / nbTotal : 0;
+        const poidsMoy = nbTotal > 0 ? pbrut / nbTotal : 0;
         
-        return { nb, vol, pbrut, dens, dwellMoy, poidsMoy, volMoy, ipos };
+        return { nbTotal, nbCaisses, nbColis, vol, pbrut, dens, dwellMoy, poidsMoy };
     };
 
     const m1 = calc(r1);
@@ -727,14 +731,15 @@ function compareRows(r1, r2) {
     return {
         nom1: fileLabel1,
         nom2: fileLabel2,
-        nb1: m1.nb, nb2: m2.nb,
+        nbTotal1: m1.nbTotal, nbTotal2: m2.nbTotal,
+        nbCaisses1: m1.nbCaisses, nbCaisses2: m2.nbCaisses,
+        nbColis1: m1.nbColis, nbColis2: m2.nbColis,
         vol1: m1.vol, vol2: m2.vol,
         pbrut1: m1.pbrut, pbrut2: m2.pbrut,
         dens1: m1.dens, dens2: m2.dens,
         dwellMoy1: m1.dwellMoy, dwellMoy2: m2.dwellMoy,
-        poidsMoy1: m1.poidsMoy, poidsMoy2: m1.poidsMoy,
-        ipos1: m1.ipos, ipos2: m2.ipos,
-        pctNb: pctDiff(m1.nb, m2.nb),
+        poidsMoy1: m1.poidsMoy, poidsMoy2: m2.poidsMoy,
+        pctNbTotal: pctDiff(m1.nbTotal, m2.nbTotal),
         pctVol: pctDiff(m1.vol, m2.vol),
         pctPbrut: pctDiff(m1.pbrut, m2.pbrut),
         pctDwell: pctDiff(m1.dwellMoy, m2.dwellMoy)
@@ -744,7 +749,7 @@ function compareRows(r1, r2) {
 function displayComparison(result) {
     const comp = document.getElementById('comparisonResult');
     
-    // Helper para mostrar diferenças com cores
+    // Helper pour afficher différences avec couleurs
     const diffClass = (val) => {
         return val < 0 ? ' class="diff negative"' : ' class="diff"';
     };
@@ -767,22 +772,36 @@ function displayComparison(result) {
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td><strong>Nb caisses</strong></td>
-                    <td>${result.nb1}</td>
-                    <td>${result.nb2}</td>
-                    <td${diffClass(result.nb1 - result.nb2)}>${Math.abs(result.nb1 - result.nb2)}</td>
-                    <td${pctClass(result.pctNb)}>${result.pctNb}%</td>
+                <tr class="highlight">
+                    <td><strong>Total articles</strong></td>
+                    <td>${result.nbTotal1}</td>
+                    <td>${result.nbTotal2}</td>
+                    <td${diffClass(result.nbTotal1 - result.nbTotal2)}>${Math.abs(result.nbTotal1 - result.nbTotal2)}</td>
+                    <td${pctClass(result.pctNbTotal)}>${result.pctNbTotal}%</td>
                 </tr>
                 <tr>
-                    <td><strong>Volume (m³)</strong></td>
+                    <td>&nbsp;&nbsp;→ Caisses (dim > 49cm)</td>
+                    <td>${result.nbCaisses1}</td>
+                    <td>${result.nbCaisses2}</td>
+                    <td${diffClass(result.nbCaisses1 - result.nbCaisses2)}>${Math.abs(result.nbCaisses1 - result.nbCaisses2)}</td>
+                    <td class="pct">–</td>
+                </tr>
+                <tr>
+                    <td>&nbsp;&nbsp;→ Colis (dim ≤ 49cm)</td>
+                    <td>${result.nbColis1}</td>
+                    <td>${result.nbColis2}</td>
+                    <td${diffClass(result.nbColis1 - result.nbColis2)}>${Math.abs(result.nbColis1 - result.nbColis2)}</td>
+                    <td class="pct">–</td>
+                </tr>
+                <tr>
+                    <td><strong>Volume total (m³)</strong></td>
                     <td>${result.vol1.toFixed(2)}</td>
                     <td>${result.vol2.toFixed(2)}</td>
                     <td${diffClass(result.vol1 - result.vol2)}>${Math.abs((result.vol1 - result.vol2).toFixed(2))}</td>
                     <td${pctClass(result.pctVol)}>${result.pctVol}%</td>
                 </tr>
                 <tr>
-                    <td><strong>Poids brut (kg)</strong></td>
+                    <td><strong>Poids total (kg)</strong></td>
                     <td>${result.pbrut1.toFixed(0)}</td>
                     <td>${result.pbrut2.toFixed(0)}</td>
                     <td${diffClass(result.pbrut1 - result.pbrut2)}>${Math.abs((result.pbrut1 - result.pbrut2).toFixed(0))}</td>
@@ -796,31 +815,17 @@ function displayComparison(result) {
                     <td class="pct">–</td>
                 </tr>
                 <tr class="highlight">
-                    <td><strong>Tempo no quai (h)</strong></td>
+                    <td><strong>Temps moyen quai (h)</strong></td>
                     <td>${result.dwellMoy1.toFixed(1)}</td>
                     <td>${result.dwellMoy2.toFixed(1)}</td>
                     <td${diffClass(result.dwellMoy1 - result.dwellMoy2)}>${Math.abs((result.dwellMoy1 - result.dwellMoy2).toFixed(1))}</td>
                     <td${pctClass(result.pctDwell)}>${result.pctDwell}%</td>
                 </tr>
                 <tr>
-                    <td><strong>Poids moy/caisse (kg)</strong></td>
+                    <td><strong>Poids moy/article (kg)</strong></td>
                     <td>${result.poidsMoy1.toFixed(1)}</td>
                     <td>${result.poidsMoy2.toFixed(1)}</td>
                     <td${diffClass(result.poidsMoy1 - result.poidsMoy2)}>${Math.abs((result.poidsMoy1 - result.poidsMoy2).toFixed(1))}</td>
-                    <td class="pct">–</td>
-                </tr>
-                <tr>
-                    <td><strong>Nb commandes distintas</strong></td>
-                    <td>${result.ipos1}</td>
-                    <td>${result.ipos2}</td>
-                    <td${diffClass(result.ipos1 - result.ipos2)}>${Math.abs(result.ipos1 - result.ipos2)}</td>
-                    <td${pctClass(pctDiff(result.ipos1, result.ipos2))}>${pctDiff(result.ipos1, result.ipos2)}%</td>
-                </tr>
-                <tr>
-                    <td><strong>Throughput (caisses/dia)</strong></td>
-                    <td>${result.dwellMoy1 > 0 ? (result.nb1 / (result.dwellMoy1 / 24)).toFixed(1) : '–'}</td>
-                    <td>${result.dwellMoy2 > 0 ? (result.nb2 / (result.dwellMoy2 / 24)).toFixed(1) : '–'}</td>
-                    <td class="diff">–</td>
                     <td class="pct">–</td>
                 </tr>
             </tbody>
