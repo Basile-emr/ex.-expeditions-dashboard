@@ -121,61 +121,110 @@ function parseExcelFile(data) {
     if (data.length < 4) return;
 
     const headerLine1 = data[0].map(h => String(h || '').toLowerCase().trim());
-    const headerLine2 = data[1].map(h => String(h || '').toLowerCase().trim());
+    const headers = headerLine1;
     
-    const headers = headerLine1.map((h, idx) => !h && headerLine2[idx] ? headerLine2[idx] : h);
+    // Détecter le format du fichier
+    const isFicheTravail = headers.some(h => h.includes('semaine')) && headers.some(h => h.includes('réception'));
+    const isArchives = headers.some(h => h.includes('ipo')) && headers.some(h => h.includes('emballage')) && headers.some(h => h.includes('nombre de colis'));
     
     CURRENT_ROWS = [];
 
-    for (let i = 3; i < data.length; i++) {
-        const row = data[i];
-        const semaine = parseInt(row[0]);
-        if (isNaN(semaine)) continue;
+    if (isFicheTravail) {
+        // Format FICHE DE TRAVAIL
+        for (let i = 3; i < data.length; i++) {
+            const row = data[i];
+            const semaine = parseInt(row[0]);
+            if (isNaN(semaine)) continue;
 
-        const dateReception = parseDate(row[1]);
-        const heureReception = row[1] ? extractHour(row[1]) : 0;
+            const dateReception = parseDate(row[1]);
+            const heureReception = row[1] ? extractHour(row[1]) : 0;
 
-        const obj = {
-            semaine,
-            dateReception: dateReception ? dateReception.toISOString().split('T')[0] : '',
-            heureReception,
-            ipo: row[2] || '',
-            pbrut: parseFloat(String(row[8] || '').replace(',', '.')) || 0,
-            vol: parseFloat(String(row[9] || '').replace(',', '.')) || 0,
-            L: parseFloat(String(row[5] || '').replace(',', '.')) || null,
-            W: parseFloat(String(row[6] || '').replace(',', '.')) || null,
-            H: parseFloat(String(row[7] || '').replace(',', '.')) || null
-        };
+            const obj = {
+                format: 'fiche_travail',
+                semaine,
+                dateReception: dateReception ? dateReception.toISOString().split('T')[0] : '',
+                heureReception,
+                ipo: row[2] || '',
+                pbrut: parseFloat(String(row[8] || '').replace(',', '.')) || 0,
+                vol: parseFloat(String(row[9] || '').replace(',', '.')) || 0,
+                L: parseFloat(String(row[5] || '').replace(',', '.')) || null,
+                W: parseFloat(String(row[6] || '').replace(',', '.')) || null,
+                H: parseFloat(String(row[7] || '').replace(',', '.')) || null,
+                nbColis: 1 // Par défaut 1 colis par ligne
+            };
 
-        // Calcular tempo estimado no quai (em horas)
-        // Se houver uma coluna de date de saída/depart, usar essa
-        // Senão estimar baseado na semana
-        if (row[10] && row[10] !== '') {
-            const dateDepart = parseDate(row[10]);
-            if (dateDepart && dateReception) {
-                obj.dwellTimeHours = Math.round((dateDepart - dateReception) / (1000 * 60 * 60));
+            if (row[10] && row[10] !== '') {
+                const dateDepart = parseDate(row[10]);
+                if (dateDepart && dateReception) {
+                    obj.dwellTimeHours = Math.round((dateDepart - dateReception) / (1000 * 60 * 60));
+                }
+            } else {
+                const dens = obj.vol > 0 ? obj.pbrut / obj.vol : 0;
+                obj.dwellTimeHours = Math.max(0.5, Math.min(48, (obj.vol * 1000 / 100) * (1 + dens / 500)));
             }
-        } else {
-            // Estimativa: tempo baseado na densidade e volume
-            const dens = obj.vol > 0 ? obj.pbrut / obj.vol : 0;
-            // Fórmula: tempo estimado = (volume em litros / 100) * (1 + dens/500)
-            // Isso dá tipicamente 0-48 horas dependendo do tamanho
-            obj.dwellTimeHours = Math.max(0.5, Math.min(48, (obj.vol * 1000 / 100) * (1 + dens / 500)));
-        }
 
-        if (obj.vol === 0 && obj.L && obj.W && obj.H) {
-            obj.vol = (obj.L * obj.W * obj.H) / 1000000;
-        }
+            if (obj.vol === 0 && obj.L && obj.W && obj.H) {
+                obj.vol = (obj.L * obj.W * obj.H) / 1000000;
+            }
 
-        if (obj.L && obj.W && obj.H) {
-            obj.dimKey = `${Math.round(obj.L)}×${Math.round(obj.W)}×${Math.round(obj.H)} cm`;
-            // Déterminer si c'est une caisse ou un colis : caisse si une dimension > 49cm
-            obj.type = Math.max(obj.L, obj.W, obj.H) > 49 ? 'caisse' : 'colis';
-        } else {
-            obj.type = 'colis';
-        }
+            if (obj.L && obj.W && obj.H) {
+                obj.dimKey = `${Math.round(obj.L)}×${Math.round(obj.W)}×${Math.round(obj.H)} cm`;
+                obj.type = Math.max(obj.L, obj.W, obj.H) > 49 ? 'caisse' : 'colis';
+            } else {
+                obj.type = 'colis';
+            }
 
-        CURRENT_ROWS.push(obj);
+            CURRENT_ROWS.push(obj);
+        }
+    } else if (isArchives) {
+        // Format ARCHIVES
+        // Trouver les indices des colonnes clés
+        const ipoIdx = headers.findIndex(h => h.includes('ipo'));
+        const nbColisIdx = headers.findIndex(h => h.includes('nombre de colis'));
+        const dateEmballageIdx = headers.findIndex(h => h.includes('emballage') && h.includes('date'));
+        const dateSortieIdx = headers.findIndex(h => h.includes('date de sortie'));
+        const pbruts = headers.filter((h, i) => h.includes('poids brut')); // Plusieurs colonnes de poids brut
+        
+        for (let i = 2; i < data.length; i++) {
+            const row = data[i];
+            const ipo = row[ipoIdx] || '';
+            if (!ipo) continue;
+
+            const dateEmballage = dateEmballageIdx >= 0 ? parseDate(row[dateEmballageIdx]) : null;
+            const dateSortie = dateSortieIdx >= 0 ? parseDate(row[dateSortieIdx]) : null;
+            const nbColis = nbColisIdx >= 0 ? parseInt(row[nbColisIdx]) || 1 : 1;
+
+            // Calculer le dwell time
+            let dwellTimeHours = 0;
+            if (dateEmballage && dateSortie) {
+                dwellTimeHours = Math.round((dateSortie - dateEmballage) / (1000 * 60 * 60));
+            }
+
+            // Trouver le poids brut (prendre la première colonne remplie)
+            let pbrut = 0;
+            let pbruttIdx = headers.findIndex(h => h.includes('poids brut'));
+            while (pbruttIdx >= 0 && pbrut === 0) {
+                pbrut = parseFloat(String(row[pbruttIdx] || '').replace(',', '.')) || 0;
+                if (pbrut === 0) {
+                    pbruttIdx = headers.findIndex((h, idx) => idx > pbruttIdx && h.includes('poids brut'));
+                } else {
+                    break;
+                }
+            }
+
+            const obj = {
+                format: 'archives',
+                ipo: ipo,
+                nbColis: nbColis,
+                dateEmballage: dateEmballage ? dateEmballage.toISOString().split('T')[0] : '',
+                dateSortie: dateSortie ? dateSortie.toISOString().split('T')[0] : '',
+                dwellTimeHours: dwellTimeHours,
+                pbrut: pbrut,
+                type: 'colis' // Les archives sont généralement des colis
+            };
+
+            CURRENT_ROWS.push(obj);
+        }
     }
 
     FILTERED_ROWS = JSON.parse(JSON.stringify(CURRENT_ROWS));
@@ -702,27 +751,35 @@ document.getElementById('compRunBtn')?.addEventListener('click', () => {
 });
 
 function compareRows(r1, r2) {
-    const fileLabel1 = document.getElementById('compSelect1').value === 'current' ? CURRENT_FICHE?.name || 'Fiche actuelle' : '';
-    const fileLabel2 = '';
+    const fileLabel1 = document.getElementById('compSelect1').value === 'current' ? CURRENT_FICHE?.name || 'Fiche actuelle' : 'Archive 1';
+    const fileLabel2 = 'Archive 2';
     
     // Calcul des métriques pour chaque fichier
     const calc = (rows) => {
         const nbTotal = rows.length;
-        const nbCaisses = rows.filter(r => r.type === 'caisse').length;
-        const nbColis = rows.filter(r => r.type === 'colis').length;
-        const vol = rows.reduce((s, r) => s + (r.vol || 0), 0);
+        const nbColis = rows.reduce((s, r) => s + (r.nbColis || 1), 0);
         const pbrut = rows.reduce((s, r) => s + (r.pbrut || 0), 0);
-        const dens = vol > 0 ? pbrut / vol : 0;
         const dwellMoy = nbTotal > 0 ? rows.reduce((s, r) => s + (r.dwellTimeHours || 0), 0) / nbTotal : 0;
-        const poidsMoy = nbTotal > 0 ? pbrut / nbTotal : 0;
+        const ipos = new Set(rows.map(r => r.ipo).filter(x => x)).size;
+        const poidsMoy = nbColis > 0 ? pbrut / nbColis : 0;
         
-        return { nbTotal, nbCaisses, nbColis, vol, pbrut, dens, dwellMoy, poidsMoy };
+        // Grouper par IPO pour analyse détaillée
+        const byIpo = {};
+        rows.forEach(r => {
+            const key = r.ipo || 'Sans IPO';
+            if (!byIpo[key]) byIpo[key] = { nbColis: 0, pbrut: 0, dwellTime: 0, count: 0 };
+            byIpo[key].nbColis += (r.nbColis || 1);
+            byIpo[key].pbrut += (r.pbrut || 0);
+            byIpo[key].dwellTime += (r.dwellTimeHours || 0);
+            byIpo[key].count++;
+        });
+        
+        return { nbTotal, nbColis, pbrut, dwellMoy, ipos, poidsMoy, byIpo };
     };
 
     const m1 = calc(r1);
     const m2 = calc(r2);
 
-    // Calcul des différences en pourcentage
     const pctDiff = (v1, v2) => {
         if (v2 === 0 || v2 === null) return v1 === 0 ? 0 : 999;
         return ((v1 - v2) / v2 * 100).toFixed(1);
@@ -732,15 +789,14 @@ function compareRows(r1, r2) {
         nom1: fileLabel1,
         nom2: fileLabel2,
         nbTotal1: m1.nbTotal, nbTotal2: m2.nbTotal,
-        nbCaisses1: m1.nbCaisses, nbCaisses2: m2.nbCaisses,
         nbColis1: m1.nbColis, nbColis2: m2.nbColis,
-        vol1: m1.vol, vol2: m2.vol,
         pbrut1: m1.pbrut, pbrut2: m2.pbrut,
-        dens1: m1.dens, dens2: m2.dens,
         dwellMoy1: m1.dwellMoy, dwellMoy2: m2.dwellMoy,
+        ipos1: m1.ipos, ipos2: m2.ipos,
         poidsMoy1: m1.poidsMoy, poidsMoy2: m2.poidsMoy,
-        pctNbTotal: pctDiff(m1.nbTotal, m2.nbTotal),
-        pctVol: pctDiff(m1.vol, m2.vol),
+        byIpo1: m1.byIpo,
+        byIpo2: m2.byIpo,
+        pctColis: pctDiff(m1.nbColis, m2.nbColis),
         pctPbrut: pctDiff(m1.pbrut, m2.pbrut),
         pctDwell: pctDiff(m1.dwellMoy, m2.dwellMoy)
     };
@@ -749,7 +805,6 @@ function compareRows(r1, r2) {
 function displayComparison(result) {
     const comp = document.getElementById('comparisonResult');
     
-    // Helper pour afficher différences avec couleurs
     const diffClass = (val) => {
         return val < 0 ? ' class="diff negative"' : ' class="diff"';
     };
@@ -760,59 +815,26 @@ function displayComparison(result) {
         return p < 0 ? ' class="pct negative"' : ' class="pct"';
     };
 
-    comp.innerHTML = `
+    // Tableau principal - Comparaison globale
+    let html = `
+        <h3 style="margin-bottom: 1.5rem; color: var(--accent-light);">Comparaison Globale</h3>
         <table class="comparison-table">
             <thead>
                 <tr>
                     <th>Métrique</th>
-                    <th>${result.nom1 || 'Fiche Actuelle'}</th>
-                    <th>${result.nom2 || 'Archive'}</th>
+                    <th>${result.nom1}</th>
+                    <th>${result.nom2}</th>
                     <th>Différence</th>
                     <th>% Variation</th>
                 </tr>
             </thead>
             <tbody>
                 <tr class="highlight">
-                    <td><strong>Total articles</strong></td>
-                    <td>${result.nbTotal1}</td>
-                    <td>${result.nbTotal2}</td>
-                    <td${diffClass(result.nbTotal1 - result.nbTotal2)}>${Math.abs(result.nbTotal1 - result.nbTotal2)}</td>
-                    <td${pctClass(result.pctNbTotal)}>${result.pctNbTotal}%</td>
-                </tr>
-                <tr>
-                    <td>&nbsp;&nbsp;→ Caisses (dim > 49cm)</td>
-                    <td>${result.nbCaisses1}</td>
-                    <td>${result.nbCaisses2}</td>
-                    <td${diffClass(result.nbCaisses1 - result.nbCaisses2)}>${Math.abs(result.nbCaisses1 - result.nbCaisses2)}</td>
-                    <td class="pct">–</td>
-                </tr>
-                <tr>
-                    <td>&nbsp;&nbsp;→ Colis (dim ≤ 49cm)</td>
+                    <td><strong>Nombre total de colis</strong></td>
                     <td>${result.nbColis1}</td>
                     <td>${result.nbColis2}</td>
                     <td${diffClass(result.nbColis1 - result.nbColis2)}>${Math.abs(result.nbColis1 - result.nbColis2)}</td>
-                    <td class="pct">–</td>
-                </tr>
-                <tr>
-                    <td><strong>Volume total (m³)</strong></td>
-                    <td>${result.vol1.toFixed(2)}</td>
-                    <td>${result.vol2.toFixed(2)}</td>
-                    <td${diffClass(result.vol1 - result.vol2)}>${Math.abs((result.vol1 - result.vol2).toFixed(2))}</td>
-                    <td${pctClass(result.pctVol)}>${result.pctVol}%</td>
-                </tr>
-                <tr>
-                    <td><strong>Poids total (kg)</strong></td>
-                    <td>${result.pbrut1.toFixed(0)}</td>
-                    <td>${result.pbrut2.toFixed(0)}</td>
-                    <td${diffClass(result.pbrut1 - result.pbrut2)}>${Math.abs((result.pbrut1 - result.pbrut2).toFixed(0))}</td>
-                    <td${pctClass(result.pctPbrut)}>${result.pctPbrut}%</td>
-                </tr>
-                <tr>
-                    <td><strong>Densité (kg/m³)</strong></td>
-                    <td>${result.dens1.toFixed(1)}</td>
-                    <td>${result.dens2.toFixed(1)}</td>
-                    <td${diffClass(result.dens1 - result.dens2)}>${Math.abs((result.dens1 - result.dens2).toFixed(1))}</td>
-                    <td class="pct">–</td>
+                    <td${pctClass(result.pctColis)}>${result.pctColis}%</td>
                 </tr>
                 <tr class="highlight">
                     <td><strong>Temps moyen quai (h)</strong></td>
@@ -822,15 +844,91 @@ function displayComparison(result) {
                     <td${pctClass(result.pctDwell)}>${result.pctDwell}%</td>
                 </tr>
                 <tr>
-                    <td><strong>Poids moy/article (kg)</strong></td>
+                    <td><strong>Poids total (kg)</strong></td>
+                    <td>${result.pbrut1.toFixed(0)}</td>
+                    <td>${result.pbrut2.toFixed(0)}</td>
+                    <td${diffClass(result.pbrut1 - result.pbrut2)}>${Math.abs((result.pbrut1 - result.pbrut2).toFixed(0))}</td>
+                    <td${pctClass(result.pctPbrut)}>${result.pctPbrut}%</td>
+                </tr>
+                <tr>
+                    <td><strong>Poids moyen/colis (kg)</strong></td>
                     <td>${result.poidsMoy1.toFixed(1)}</td>
                     <td>${result.poidsMoy2.toFixed(1)}</td>
                     <td${diffClass(result.poidsMoy1 - result.poidsMoy2)}>${Math.abs((result.poidsMoy1 - result.poidsMoy2).toFixed(1))}</td>
                     <td class="pct">–</td>
                 </tr>
+                <tr>
+                    <td><strong>Nombre unique d'IPO/SO</strong></td>
+                    <td>${result.ipos1}</td>
+                    <td>${result.ipos2}</td>
+                    <td${diffClass(result.ipos1 - result.ipos2)}>${Math.abs(result.ipos1 - result.ipos2)}</td>
+                    <td class="pct">–</td>
+                </tr>
             </tbody>
         </table>
     `;
+
+    // Analyse par IPO
+    html += `<h3 style="margin-top: 2rem; margin-bottom: 1.5rem; color: var(--accent-light);">Détail par IPO/SO</h3>`;
+    
+    const ipos1 = Object.entries(result.byIpo1 || {}).sort((a, b) => b[1].nbColis - a[1].nbColis);
+    const ipos2 = Object.entries(result.byIpo2 || {}).sort((a, b) => b[1].nbColis - a[1].nbColis);
+
+    // Table IPO #1
+    html += `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">`;
+    html += `<div><h4 style="color: var(--accent); margin-bottom: 1rem;">${result.nom1}</h4>`;
+    html += `<table class="comparison-table" style="font-size: 0.9rem;">
+        <thead>
+            <tr>
+                <th>IPO/SO</th>
+                <th>Colis</th>
+                <th>Poids (kg)</th>
+                <th>Dwell (h)</th>
+            </tr>
+        </thead>
+        <tbody>`;
+    
+    ipos1.forEach(([ipo, metrics]) => {
+        const dwellAvg = metrics.count > 0 ? (metrics.dwellTime / metrics.count).toFixed(1) : '–';
+        html += `
+            <tr>
+                <td><strong>${ipo}</strong></td>
+                <td>${metrics.nbColis}</td>
+                <td>${metrics.pbrut.toFixed(0)}</td>
+                <td>${dwellAvg}</td>
+            </tr>
+        `;
+    });
+    html += `</tbody></table></div>`;
+
+    // Table IPO #2
+    html += `<div><h4 style="color: var(--accent); margin-bottom: 1rem;">${result.nom2}</h4>`;
+    html += `<table class="comparison-table" style="font-size: 0.9rem;">
+        <thead>
+            <tr>
+                <th>IPO/SO</th>
+                <th>Colis</th>
+                <th>Poids (kg)</th>
+                <th>Dwell (h)</th>
+            </tr>
+        </thead>
+        <tbody>`;
+    
+    ipos2.forEach(([ipo, metrics]) => {
+        const dwellAvg = metrics.count > 0 ? (metrics.dwellTime / metrics.count).toFixed(1) : '–';
+        html += `
+            <tr>
+                <td><strong>${ipo}</strong></td>
+                <td>${metrics.nbColis}</td>
+                <td>${metrics.pbrut.toFixed(0)}</td>
+                <td>${dwellAvg}</td>
+            </tr>
+        `;
+    });
+    html += `</tbody></table></div>`;
+    html += `</div>`;
+
+    comp.innerHTML = html;
 }
 
 function pctDiff(v1, v2) {
