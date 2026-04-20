@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Expéditions – Emerson</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0b0f1a;
+    --surface: #131929;
+    --surface2: #1a2338;
+    --border: #243050;
+    --accent: #3b82f6;
+    --accent2: #06b6d4;
+    --accent3: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --success: #10b981;
+    --danger: #ef4444;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  header {
+    padding: 22px 40px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: linear-gradient(90deg, #0b0f1a 60%, #131929);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo-mark {
+    width: 38px; height: 38px;
+    background: var(--accent);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 16px; font-weight: 700; color: #fff;
+    flex-shrink: 0;
+  }
+  header h1 { font-family: 'Space Mono', monospace; font-size: 16px; letter-spacing: .05em; }
+  header p  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .upload-zone {
+    margin: 40px auto; max-width: 520px;
+    border: 2px dashed var(--border); border-radius: 16px;
+    padding: 52px 40px; text-align: center;
+    transition: border-color .25s, background .25s; cursor: pointer;
+  }
+  .upload-zone:hover, .upload-zone.drag {
+    border-color: var(--accent); background: rgba(59,130,246,.05);
+  }
+  .upload-zone .icon { font-size: 46px; margin-bottom: 14px; }
+  .upload-zone h2 { font-size: 17px; margin-bottom: 8px; }
+  .upload-zone p  { color: var(--muted); font-size: 13px; }
+  .upload-btn {
+    display: inline-block; margin-top: 20px; padding: 9px 26px;
+    background: var(--accent); color: #fff; border-radius: 8px;
+    font-size: 13px; font-weight: 600; cursor: pointer; border: none;
+    transition: background .2s;
+  }
+  .upload-btn:hover { background: #2563eb; }
+
+  #dashboard { display: none; padding: 22px 36px 50px; }
+
+  .filter-bar {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+    margin-bottom: 22px; padding: 16px 20px;
+    background: var(--surface); border-radius: 12px; border: 1px solid var(--border);
+  }
+  .filter-group label {
+    display: block; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--muted); margin-bottom: 5px;
+  }
+  .filter-group select {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 7px; padding: 7px 11px;
+    font-size: 12px; font-family: 'DM Sans', sans-serif;
+    min-width: 150px; cursor: pointer;
+  }
+  .filter-group select[multiple] { height: 72px; }
+  .reset-btn {
+    padding: 7px 18px; background: transparent; border: 1px solid var(--border);
+    color: var(--muted); border-radius: 7px; font-size: 12px; cursor: pointer;
+    transition: all .2s; align-self: flex-end;
+  }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-bottom: 22px;
+  }
+  .kpi-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 15px; transition: border-color .2s;
+  }
+  .kpi-card:hover { border-color: var(--accent); }
+  .kpi-val {
+    font-family: 'Space Mono', monospace; font-size: 22px; font-weight: 700;
+    color: var(--accent); line-height: 1; margin-bottom: 5px;
+  }
+  .kpi-card.c2 .kpi-val { color: var(--accent2); }
+  .kpi-card.c3 .kpi-val { color: var(--accent3); }
+  .kpi-card.c4 .kpi-val { color: var(--success); }
+  .kpi-lbl { font-size: 11px; color: var(--muted); }
+
+  /* Grille strictement 2 colonnes, hauteurs uniformes */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 16px 12px;
+    display: flex; flex-direction: column;
+  }
+  .chart-card-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px; flex-shrink: 0;
+  }
+  .chart-card-header h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); flex: 1;
+  }
+  .canvas-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 200px;
+  }
+
+  /* ── Drill-down pills ── */
+  .month-pills {
+    display: flex; flex-wrap: wrap; gap: 5px;
+    margin-bottom: 8px; flex-shrink: 0;
+  }
+  .pill {
+    padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); color: var(--muted);
+    background: var(--surface2); transition: all .18s; white-space: nowrap;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .pill:hover  { border-color: var(--success); color: var(--success); }
+  .pill.active { background: var(--success); border-color: var(--success); color: #000; }
+
+  .day-empty {
+    display: flex; align-items: center; justify-content: center; height: 100%;
+    font-size: 12px; color: var(--muted); font-style: italic;
+    flex-direction: column; gap: 8px; text-align: center;
+  }
+  .day-empty span { font-size: 24px; }
+
+  @media (max-width: 860px) {
+    header { padding: 14px 18px; }
+    #dashboard { padding: 14px 14px 40px; }
+    .charts-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">EX</div>
+  <div>
+    <h1>DASHBOARD EXPÉDITIONS EN CAISSES</h1>
+    <p>Fiche de travail — Analyse opérationnelle</p>
+  </div>
+</header>
+
+<div id="upload-view">
+  <div class="upload-zone" id="dropzone">
+    <div class="icon">📦</div>
+    <h2>Charger la fiche de travail</h2>
+    <p>Glissez-déposez votre fichier Excel (.xlsx) ici</p>
+    <label class="upload-btn">
+      Choisir un fichier
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+    </label>
+  </div>
+</div>
+
+<div id="dashboard">
+
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label>Semaine(s)</label>
+      <select id="selSemaine" multiple></select>
+    </div>
+    <div class="filter-group">
+      <label>IPO / SO</label>
+      <select id="selIpo" multiple></select>
+    </div>
+    <button class="reset-btn" id="resetBtn">↺ Réinitialiser</button>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">    <div class="kpi-val" id="kNb">–</div>    <div class="kpi-lbl">Nombre de caisses</div></div>
+    <div class="kpi-card c2"> <div class="kpi-val" id="kVol">–</div>   <div class="kpi-lbl">Volume total (m³)</div></div>
+    <div class="kpi-card c3"> <div class="kpi-val" id="kPoids">–</div> <div class="kpi-lbl">Poids brut total (kg)</div></div>
+    <div class="kpi-card c4"> <div class="kpi-val" id="kDens">–</div>  <div class="kpi-lbl">Densité (kg/m³)</div></div>
+    <div class="kpi-card">    <div class="kpi-val" id="kPoidsM">–</div><div class="kpi-lbl">Poids moyen/caisse</div></div>
+    <div class="kpi-card c2"> <div class="kpi-val" id="kVolM">–</div>  <div class="kpi-lbl">Volume moyen/caisse</div></div>
+  </div>
+
+  <div class="charts-grid">
+
+    <div class="chart-card">
+      <div class="chart-card-header"><h3>Caisses par semaine</h3></div>
+      <div class="canvas-wrap"><canvas id="cSemNb"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header"><h3>Volume (m³) par semaine</h3></div>
+      <div class="canvas-wrap"><canvas id="cSemVol"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header"><h3>Poids moyen/caisse par semaine (kg)</h3></div>
+      <div class="canvas-wrap"><canvas id="cSemPoids"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header"><h3>Caisses par mois</h3></div>
+      <div class="canvas-wrap"><canvas id="cMois"></canvas></div>
+    </div>
+
+    <!-- Drill-down par jour -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3>Caisses par jour</h3>
+        <span id="jourTotal" style="font-size:10px;color:var(--success);font-weight:700;display:none;"></span>
+      </div>
+      <div class="month-pills" id="monthPills"></div>
+      <div class="canvas-wrap" id="jourWrap">
+        <div class="day-empty" id="jourEmpty">
+          <span>📅</span>
+          Sélectionnez un mois<br>pour afficher les jours
+        </div>
+        <canvas id="cJour" style="display:none;"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header"><h3>Répartition par dimensions — Top 12 (L×l×H cm)</h3></div>
+      <div class="canvas-wrap"><canvas id="cDim"></canvas></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ── Couleurs ── */
+const COLORS = {
+  blue:  'rgba(59,130,246,',
+  cyan:  'rgba(6,182,212,',
+  amber: 'rgba(245,158,11,',
+  green: 'rgba(16,185,129,',
+  rose:  'rgba(244,63,94,',
+};
+const c = (name, a) => COLORS[name] + a + ')';
+
+function baseOpts(xExtra) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: {
+        ticks: Object.assign({
+          color: '#64748b', font: { family: 'DM Sans', size: 10 },
+          maxRotation: 45, autoSkip: true,
+        }, xExtra || {}),
+        grid: { color: '#1a2338' }
+      },
+      y: {
+        ticks: { color: '#64748b', font: { family: 'DM Sans', size: 10 } },
+        grid: { color: '#1a2338' }, beginAtZero: true,
+      }
+    }
+  };
+}
+
+/* ── État ── */
+let rawData    = [];
+let charts     = {};
+let byDayData  = {};   // { 'Janvier': { 'yyyy-mm-dd': [rows] } }
+let activeMonth = null;
+
+const MONTH_ORDER = ['Janvier','Février','Mars','Avril','Mai','Juin',
+                     'Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+/* ══════════════════
+   PARSE XLSX
+══════════════════ */
+function parseFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb      = XLSX.read(e.target.result, { type: 'array', cellDates: false });
+    const ws      = wb.Sheets[wb.SheetNames[0]];
+    const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true  });
+    const fmtRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
+
+    rawData = [];
+    let currentMonth = null;
+
+    const MONTHS = {
+      'JANVIER':'Janvier','FÉVRIER':'Février','FEVRIER':'Février',
+      'MARS':'Mars','AVRIL':'Avril','MAI':'Mai','JUIN':'Juin',
+      'JUILLET':'Juillet','AOÛT':'Août','AOUT':'Août',
+      'SEPTEMBRE':'Septembre','OCTOBRE':'Octobre',
+      'NOVEMBRE':'Novembre','DÉCEMBRE':'Décembre','DECEMBRE':'Décembre'
+    };
+
+    for (let i = 0; i < fmtRows.length; i++) {
+      const row    = fmtRows[i];
+      const rowRaw = rawRows[i] || [];
+
+      const maybeMonth = String(row[3] || '').trim().toUpperCase();
+      if (MONTHS[maybeMonth]) { currentMonth = MONTHS[maybeMonth]; continue; }
+
+      const sem = parseFloat(row[0]);
+      if (isNaN(sem)) continue;
+
+      /* ── Parsing date robuste ── */
+      let dateObj = null;
+      const rawVal = rowRaw[1];
+      const fmtStr = String(row[1] || '').trim();
+
+      // 1. Serial Excel → XLSX.SSF (sans ambiguïté mm/dd vs dd/mm)
+      if (typeof rawVal === 'number' && rawVal > 1000) {
+        try {
+          const p = XLSX.SSF.parse_date_code(rawVal);
+          if (p) dateObj = new Date(p.y, p.m - 1, p.d);
+        } catch(_) {}
+      }
+      // 2. Chaîne "dd/mm/yyyy" (format FR)
+      if (!dateObj) {
+        const fr = fmtStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (fr) dateObj = new Date(+fr[3], +fr[2] - 1, +fr[1]);
+      }
+      // 3. Fallback
+      if (!dateObj) {
+        const d = new Date(fmtStr);
+        if (!isNaN(d.getTime()) && d.getFullYear() > 2000) dateObj = d;
+      }
+
+      /* ── Clé ISO locale (pas de décalage UTC) ── */
+      let isoDate = null;
+      if (dateObj) {
+        const y  = dateObj.getFullYear();
+        const mo = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d  = String(dateObj.getDate()).padStart(2, '0');
+        isoDate  = `${y}-${mo}-${d}`;
+      }
+
+      /* ── Mois : toujours depuis la date si disponible ── */
+      const month = dateObj
+        ? dateObj.toLocaleDateString('fr-FR', { month: 'long' })
+            .replace(/^\w/, ch => ch.toUpperCase())
+        : (currentMonth || '?');
+
+      const dayLabel = isoDate ? `${isoDate.slice(8)}/${isoDate.slice(5, 7)}` : null;
+
+      rawData.push({
+        semaine: sem, date: dateObj, isoDate, day: dayLabel, month,
+        ipo:       String(row[2] || '').trim(),
+        item:      String(row[3] || '').trim(),
+        poidsBrut: parseFloat(row[8]) || 0,
+        volume:    parseFloat(row[9]) || 0,
+        L: parseFloat(row[5]) || 0,
+        l: parseFloat(row[6]) || 0,
+        H: parseFloat(row[7]) || 0,
+      });
+    }
+
+    if (rawData.length === 0) { alert('Aucune donnée trouvée.'); return; }
+
+    document.getElementById('upload-view').style.display = 'none';
+    document.getElementById('dashboard').style.display   = 'block';
+    initFilters();
+    render();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ══════════════════
+   FILTRES
+══════════════════ */
+function initFilters() {
+  const semSet = [...new Set(rawData.map(d => d.semaine))].sort((a,b)=>a-b);
+  const ipoSet = [...new Set(rawData.map(d => d.ipo))].sort();
+  fillSelect('selSemaine', semSet, v => 'S'+v);
+  fillSelect('selIpo',     ipoSet, v => v);
+}
+function fillSelect(id, vals, lbl) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '';
+  vals.forEach(v => { const o = document.createElement('option'); o.value=v; o.textContent=lbl(v); sel.appendChild(o); });
+}
+function getSelected(id) { return [...document.getElementById(id).selectedOptions].map(o=>o.value); }
+function getFiltered() {
+  const sems = getSelected('selSemaine').map(Number);
+  const ipos = getSelected('selIpo');
+  return rawData.filter(d =>
+    (sems.length===0 || sems.includes(d.semaine)) &&
+    (ipos.length===0 || ipos.includes(d.ipo))
+  );
+}
+
+/* ══════════════════
+   RENDER
+══════════════════ */
+function render() {
+  const data = getFiltered();
+
+  /* KPIs */
+  const nb    = data.length;
+  const vol   = data.reduce((s,d)=>s+d.volume, 0);
+  const poids = data.reduce((s,d)=>s+d.poidsBrut, 0);
+  const dens  = vol > 0 ? poids/vol : 0;
+  document.getElementById('kNb').textContent     = nb.toLocaleString('fr-FR');
+  document.getElementById('kVol').textContent    = vol.toFixed(2);
+  document.getElementById('kPoids').textContent  = poids.toLocaleString('fr-FR');
+  document.getElementById('kDens').textContent   = dens.toFixed(1);
+  document.getElementById('kPoidsM').textContent = nb > 0 ? (poids/nb).toFixed(1)+' kg' : '–';
+  document.getElementById('kVolM').textContent   = nb > 0 ? (vol/nb).toFixed(3)+' m³' : '–';
+
+  /* Par semaine */
+  const bySem    = groupBy(data, d => 'S'+d.semaine);
+  const semKeys  = Object.keys(bySem).sort((a,b)=>+a.slice(1)-+b.slice(1));
+  drawBar ('cSemNb',    semKeys, semKeys.map(k=>bySem[k].length),                                     'blue',  'Caisses');
+  drawBar ('cSemVol',   semKeys, semKeys.map(k=>bySem[k].reduce((s,d)=>s+d.volume,0).toFixed(2)),     'cyan',  'Volume m³');
+  drawLine('cSemPoids', semKeys, semKeys.map(k=>{const g=bySem[k];return (g.reduce((s,d)=>s+d.poidsBrut,0)/g.length).toFixed(1);}), 'amber', 'Poids moy');
+
+  /* Par mois */
+  const byMonth   = groupBy(data, d => d.month);
+  const monthKeys = Object.keys(byMonth).sort((a,b)=>MONTH_ORDER.indexOf(a)-MONTH_ORDER.indexOf(b));
+  drawLine('cMois', monthKeys, monthKeys.map(k=>byMonth[k].length), 'rose', 'Caisses');
+
+  /* Dimensions */
+  const dimMap = {};
+  data.forEach(d => { if(d.L&&d.l&&d.H){const k=`${d.L}×${d.l}×${d.H}`;dimMap[k]=(dimMap[k]||0)+1;} });
+  const dimSorted = Object.entries(dimMap).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  drawBarH('cDim', dimSorted.map(([k])=>k), dimSorted.map(([,v])=>v));
+
+  /* ── Drill-down par jour ── */
+  byDayData = {};
+  data.filter(d=>d.isoDate).forEach(d => {
+    if (!byDayData[d.month]) byDayData[d.month] = {};
+    if (!byDayData[d.month][d.isoDate]) byDayData[d.month][d.isoDate] = [];
+    byDayData[d.month][d.isoDate].push(d);
+  });
+
+  const availMonths = Object.keys(byDayData).sort((a,b)=>MONTH_ORDER.indexOf(a)-MONTH_ORDER.indexOf(b));
+  buildMonthPills(availMonths);
+
+  if (activeMonth && !byDayData[activeMonth]) activeMonth = null;
+  activeMonth ? drillInto(activeMonth) : showDayEmpty();
+}
+
+/* ══════════════════
+   DRILL-DOWN
+══════════════════ */
+function buildMonthPills(months) {
+  const ctn = document.getElementById('monthPills');
+  ctn.innerHTML = '';
+  months.forEach(m => {
+    const pill = document.createElement('button');
+    pill.className = 'pill' + (m === activeMonth ? ' active' : '');
+    // Ajouter le total du mois dans la pill
+    const total = Object.values(byDayData[m]).reduce((s,arr)=>s+arr.length, 0);
+    pill.textContent = `${m} (${total})`;
+    pill.onclick = () => {
+      if (activeMonth === m) {
+        activeMonth = null;
+        document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+        showDayEmpty();
+      } else {
+        activeMonth = m;
+        document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+        pill.classList.add('active');
+        drillInto(m);
+      }
+    };
+    ctn.appendChild(pill);
+  });
+}
+
+function drillInto(month) {
+  const dayMap  = byDayData[month] || {};
+  const isoKeys = Object.keys(dayMap).sort(); // tri ISO = chronologique
+  const labels  = isoKeys.map(k => dayMap[k][0].day);
+  const values  = isoKeys.map(k => dayMap[k].length);
+
+  document.getElementById('jourEmpty').style.display = 'none';
+  const canvas = document.getElementById('cJour');
+  canvas.style.display = 'block';
+
+  destroyChart('cJour');
+  charts['cJour'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Caisses', data: values,
+        backgroundColor: c('green','0.75'),
+        borderColor:     c('green','1'),
+        borderWidth: 1, borderRadius: 4,
+      }]
+    },
+    options: Object.assign(baseOpts({ maxTicksLimit: 31, maxRotation: 55 }), {
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true, text: month,
+          color: '#94a3b8', font: { family: 'DM Sans', size: 11, weight: '600' },
+          padding: { bottom: 4 }
+        },
+        tooltip: {
+          callbacks: { label: item => ` ${item.raw} caisse${item.raw>1?'s':''}` }
+        }
+      }
+    })
+  });
+}
+
+function showDayEmpty() {
+  destroyChart('cJour');
+  document.getElementById('cJour').style.display   = 'none';
+  document.getElementById('jourEmpty').style.display = 'flex';
+}
+
+/* ══════════════════
+   CHART HELPERS
+══════════════════ */
+function destroyChart(id) { if(charts[id]){charts[id].destroy();delete charts[id];} }
+
+function drawBar(id, labels, data, col, label) {
+  destroyChart(id);
+  charts[id] = new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [{ label, data,
+      backgroundColor: c(col,'0.7'), borderColor: c(col,'1'),
+      borderWidth: 1, borderRadius: 5,
+    }]},
+    options: baseOpts()
+  });
+}
+
+function drawLine(id, labels, data, col, label) {
+  destroyChart(id);
+  charts[id] = new Chart(document.getElementById(id), {
+    type: 'line',
+    data: { labels, datasets: [{ label, data,
+      borderColor: c(col,'1'), backgroundColor: c(col,'0.15'),
+      pointBackgroundColor: c(col,'1'),
+      tension: 0.35, fill: true, pointRadius: 4,
+    }]},
+    options: baseOpts()
+  });
+}
+
+function drawBarH(id, labels, data) {
+  destroyChart(id);
+  const palette = labels.map((_,i)=>`hsl(${(i*28+200)%360},60%,55%)`);
+  charts[id] = new Chart(document.getElementById(id), {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'Caisses', data, backgroundColor: palette, borderRadius: 5 }]},
+    options: Object.assign(baseOpts({ maxRotation: 0 }), { indexAxis: 'y' })
+  });
+}
+
+function groupBy(arr, fn) {
+  return arr.reduce((m,d)=>{ const k=fn(d);(m[k]=m[k]||[]).push(d);return m; }, {});
+}
+
+/* ══════════════════
+   EVENTS
+══════════════════ */
+document.getElementById('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) parseFile(e.target.files[0]);
+});
+const dz = document.getElementById('dropzone');
+dz.addEventListener('click',     ()  => document.getElementById('fileInput').click());
+dz.addEventListener('dragover',  e   => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', ()  => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  if (e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]);
+});
+document.getElementById('selSemaine').addEventListener('change', render);
+document.getElementById('selIpo').addEventListener('change', render);
+document.getElementById('resetBtn').addEventListener('click', () => {
+  document.querySelectorAll('#selSemaine option, #selIpo option').forEach(o=>o.selected=false);
+  render();
+});
+</script>
+</body>
+</html>
