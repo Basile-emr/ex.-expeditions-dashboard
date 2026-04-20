@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Expéditions – Emerson</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0b0f1a;
+    --surface: #131929;
+    --surface2: #1a2338;
+    --border: #243050;
+    --accent: #3b82f6;
+    --accent2: #06b6d4;
+    --accent3: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --success: #10b981;
+    --danger: #ef4444;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* HEADER */
+  header {
+    padding: 28px 40px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: linear-gradient(90deg, #0b0f1a 60%, #131929);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo-mark {
+    width: 42px; height: 42px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 18px; font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  header h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 17px;
+    letter-spacing: 0.05em;
+    color: var(--text);
+  }
+  header p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* UPLOAD ZONE */
+  .upload-zone {
+    margin: 40px auto;
+    max-width: 560px;
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    padding: 52px 40px;
+    text-align: center;
+    transition: border-color .25s, background .25s;
+    cursor: pointer;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(59,130,246,.05); }
+  .upload-zone .icon { font-size: 48px; margin-bottom: 14px; }
+  .upload-zone h2 { font-size: 18px; margin-bottom: 8px; }
+  .upload-zone p { color: var(--muted); font-size: 14px; }
+  .upload-btn {
+    display: inline-block;
+    margin-top: 22px;
+    padding: 10px 28px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: background .2s;
+  }
+  .upload-btn:hover { background: #2563eb; }
+
+  /* DASHBOARD */
+  #dashboard { display: none; padding: 28px 40px 60px; }
+
+  /* FILTERS */
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+    margin-bottom: 28px;
+    padding: 20px 24px;
+    background: var(--surface);
+    border-radius: 14px;
+    border: 1px solid var(--border);
+  }
+  .filter-group label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .filter-group select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    min-width: 160px;
+    cursor: pointer;
+  }
+  .filter-group select[multiple] { height: 80px; }
+  .reset-btn {
+    padding: 8px 20px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .2s;
+    align-self: flex-end;
+  }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* KPI GRID */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 18px;
+    transition: border-color .2s;
+  }
+  .kpi-card:hover { border-color: var(--accent); }
+  .kpi-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .kpi-card.c2 .kpi-val { color: var(--accent2); }
+  .kpi-card.c3 .kpi-val { color: var(--accent3); }
+  .kpi-card.c4 .kpi-val { color: var(--success); }
+  .kpi-lbl { font-size: 12px; color: var(--muted); }
+
+  /* CHARTS GRID */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px 22px 18px;
+  }
+  .chart-card.full { grid-column: 1 / -1; }
+  .chart-card h3 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+  canvas { max-width: 100%; }
+
+  /* Hauteurs contraintes pour les grands graphiques */
+  #cMois  { max-height: 220px; }
+  #cDim   { max-height: 260px; }
+  #cJour  { max-height: 220px; }
+
+  /* RESPONSIVE */
+  @media (max-width: 800px) {
+    header { padding: 18px 20px; }
+    #dashboard { padding: 18px 16px 60px; }
+    .charts-grid { grid-template-columns: 1fr; }
+    .chart-card.full { grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">EX</div>
+  <div>
+    <h1>DASHBOARD EXPÉDITIONS EN CAISSES</h1>
+    <p>Fiche de travail — Analyse opérationnelle</p>
+  </div>
+</header>
+
+<div id="upload-view">
+  <div class="upload-zone" id="dropzone">
+    <div class="icon">📦</div>
+    <h2>Charger la fiche de travail</h2>
+    <p>Glissez-déposez votre fichier Excel (.xlsx) ici</p>
+    <label class="upload-btn">
+      Choisir un fichier
+      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
+    </label>
+  </div>
+</div>
+
+<div id="dashboard">
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label>Semaine(s)</label>
+      <select id="selSemaine" multiple></select>
+    </div>
+    <div class="filter-group">
+      <label>IPO / SO</label>
+      <select id="selIpo" multiple></select>
+    </div>
+    <button class="reset-btn" id="resetBtn">↺ Réinitialiser</button>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">      <div class="kpi-val" id="kNb">–</div><div class="kpi-lbl">Nombre de caisses</div></div>
+    <div class="kpi-card c2">  <div class="kpi-val" id="kVol">–</div><div class="kpi-lbl">Volume total (m³)</div></div>
+    <div class="kpi-card c3">  <div class="kpi-val" id="kPoids">–</div><div class="kpi-lbl">Poids brut total (kg)</div></div>
+    <div class="kpi-card c4">  <div class="kpi-val" id="kDens">–</div><div class="kpi-lbl">Densité (kg/m³)</div></div>
+    <div class="kpi-card">     <div class="kpi-val" id="kPoidsM">–</div><div class="kpi-lbl">Poids moyen/caisse</div></div>
+    <div class="kpi-card c2">  <div class="kpi-val" id="kVolM">–</div><div class="kpi-lbl">Volume moyen/caisse</div></div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-card"><h3>Caisses par semaine</h3><canvas id="cSemNb"></canvas></div>
+    <div class="chart-card"><h3>Volume (m³) par semaine</h3><canvas id="cSemVol"></canvas></div>
+    <div class="chart-card"><h3>Poids moyen/caisse par semaine (kg)</h3><canvas id="cSemPoids"></canvas></div>
+    <div class="chart-card"><h3>Caisses par jour</h3><div style="position:relative;height:200px"><canvas id="cJour"></canvas></div></div>
+    <div class="chart-card full"><h3>Caisses par mois</h3><canvas id="cMois"></canvas></div>
+    <div class="chart-card full"><h3>Répartition par dimensions — Top 12 (L×l×H cm)</h3><canvas id="cDim"></canvas></div>
+  </div>
+</div>
+
+<script>
+const COLORS = {
+  blue:  'rgba(59,130,246,',
+  cyan:  'rgba(6,182,212,',
+  amber: 'rgba(245,158,11,',
+  green: 'rgba(16,185,129,',
+  rose:  'rgba(244,63,94,',
+};
+function c(name, a){ return COLORS[name]+a+')'; }
+
+const chartDefaults = {
+  responsive: true,
+  plugins: { legend: { display: false }, tooltip: { callbacks: {} } },
+  scales: {
+    x: { ticks: { color: '#64748b', font: { family: 'DM Sans', size: 11 } }, grid: { color: '#1a2338' } },
+    y: { ticks: { color: '#64748b', font: { family: 'DM Sans', size: 11 } }, grid: { color: '#1a2338' } },
+  }
+};
+
+let rawData = [];
+let charts = {};
+
+/* ---- PARSE XLSX ---- */
+function parseFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
+
+    rawData = [];
+    let currentMonth = null;
+
+    // Detect month labels from col index 3 (D column)
+    const MONTHS = {
+      'JANVIER': 'Janvier', 'FÉVRIER': 'Février', 'FEVRIER': 'Février',
+      'MARS': 'Mars', 'AVRIL': 'Avril', 'MAI': 'Mai', 'JUIN': 'Juin',
+      'JUILLET': 'Juillet', 'AOÛT': 'Août', 'AOUT': 'Août',
+      'SEPTEMBRE': 'Septembre', 'OCTOBRE': 'Octobre',
+      'NOVEMBRE': 'Novembre', 'DÉCEMBRE': 'Décembre', 'DECEMBRE': 'Décembre'
+    };
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      // Check for month label row
+      const maybeMonth = String(row[3] || '').trim().toUpperCase();
+      if (MONTHS[maybeMonth]) { currentMonth = MONTHS[maybeMonth]; continue; }
+      // Skip header rows
+      const sem = parseFloat(row[0]);
+      if (isNaN(sem)) continue;
+
+      // Parse date — gère le format FR dd/mm/yyyy (ex: 05/01/2026) ET ISO
+      let dateRaw = row[1];
+      let dateObj = null;
+      if (dateRaw) {
+        const s = String(dateRaw).trim();
+        const fr = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (fr) {
+          dateObj = new Date(+fr[3], +fr[2] - 1, +fr[1]);
+        } else {
+          const d = new Date(s);
+          if (!isNaN(d.getTime()) && d.getFullYear() > 2000 && d.getFullYear() < 2100) dateObj = d;
+        }
+      }
+
+      const month = dateObj
+        ? dateObj.toLocaleDateString('fr-FR', { month: 'long' })
+            .replace(/^\w/, ch => ch.toUpperCase())
+        : (currentMonth || '?');
+
+      // Clé de tri ISO (yyyy-mm-dd) et label d'affichage (JJ/MM)
+      const isoDate = dateObj
+        ? dateObj.toISOString().slice(0, 10)
+        : null;
+      const dayLabel = dateObj
+        ? dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+        : null;
+
+      rawData.push({
+        semaine: sem,
+        date: dateObj,
+        isoDate,
+        day: dayLabel,
+        month,
+        ipo: String(row[2] || '').trim(),
+        item: String(row[3] || '').trim(),
+        poidsBrut: parseFloat(row[8]) || 0,
+        volume: parseFloat(row[9]) || 0,
+        L: parseFloat(row[5]) || 0,
+        l: parseFloat(row[6]) || 0,
+        H: parseFloat(row[7]) || 0,
+      });
+    }
+
+    if (rawData.length === 0) { alert('Aucune donnée trouvée dans le fichier.'); return; }
+
+    document.getElementById('upload-view').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    initFilters();
+    render();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+/* ---- FILTERS ---- */
+function initFilters() {
+  const semSet = [...new Set(rawData.map(d => d.semaine))].sort((a,b)=>a-b);
+  const ipoSet = [...new Set(rawData.map(d => d.ipo))].sort();
+
+  fillSelect('selSemaine', semSet, v => 'S' + v);
+  fillSelect('selIpo', ipoSet, v => v);
+}
+
+function fillSelect(id, values, label) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '';
+  values.forEach(v => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = label(v);
+    sel.appendChild(o);
+  });
+}
+
+function getSelected(id) {
+  return [...document.getElementById(id).selectedOptions].map(o => o.value);
+}
+
+function getFiltered() {
+  const sems = getSelected('selSemaine').map(Number);
+  const ipos = getSelected('selIpo');
+  return rawData.filter(d =>
+    (sems.length === 0 || sems.includes(d.semaine)) &&
+    (ipos.length === 0 || ipos.includes(d.ipo))
+  );
+}
+
+/* ---- RENDER ---- */
+function render() {
+  const data = getFiltered();
+
+  // KPIs
+  const nb = data.length;
+  const vol = data.reduce((s,d)=>s+d.volume,0);
+  const poids = data.reduce((s,d)=>s+d.poidsBrut,0);
+  const dens = vol > 0 ? poids/vol : 0;
+  document.getElementById('kNb').textContent = nb.toLocaleString('fr-FR');
+  document.getElementById('kVol').textContent = vol.toFixed(2);
+  document.getElementById('kPoids').textContent = poids.toLocaleString('fr-FR');
+  document.getElementById('kDens').textContent = dens.toFixed(1);
+  document.getElementById('kPoidsM').textContent = nb > 0 ? (poids/nb).toFixed(1)+' kg' : '–';
+  document.getElementById('kVolM').textContent  = nb > 0 ? (vol/nb).toFixed(3)+' m³' : '–';
+
+  // Group by semaine
+  const bySem = groupBy(data, d => 'S'+d.semaine);
+  const semKeys = Object.keys(bySem).sort((a,b)=>parseInt(a.slice(1))-parseInt(b.slice(1)));
+  const semNb   = semKeys.map(k => bySem[k].length);
+  const semVol  = semKeys.map(k => bySem[k].reduce((s,d)=>s+d.volume,0).toFixed(2));
+  const semPoids= semKeys.map(k => { const g=bySem[k]; return (g.reduce((s,d)=>s+d.poidsBrut,0)/g.length).toFixed(1); });
+
+  // ── Caisses par jour — tri chronologique complet (mois puis jour) ──
+  // On groupe par clé ISO pour trier correctement, et on affiche JJ/MM
+  // Les entrées sans date sont exclues (pas de clé de tri fiable)
+  const withDate = data.filter(d => d.isoDate);
+  const byDayIso = groupBy(withDate, d => d.isoDate);
+  // Tri chronologique réel via la clé ISO yyyy-mm-dd
+  const dayIsoKeys = Object.keys(byDayIso).sort();
+  const dayLabels  = dayIsoKeys.map(k => byDayIso[k][0].day); // affichage JJ/MM
+  const dayNb      = dayIsoKeys.map(k => byDayIso[k].length);
+
+  // Annotations de mois : on détecte les changements de mois pour les afficher
+  // via un plugin inline sur l'axe X (on encode le mois dans le label quand il change)
+  const dayLabelsWithMonth = dayLabels.map((lbl, i) => {
+    const isoKey = dayIsoKeys[i];
+    const monthName = byDayIso[isoKey][0].month;
+    // On ajoute le nom du mois uniquement au premier jour du mois dans la série
+    if (i === 0 || byDayIso[dayIsoKeys[i-1]][0].month !== monthName) {
+      return [monthName, lbl]; // tableau = multiline label dans Chart.js
+    }
+    return lbl;
+  });
+
+  // Group by month (ordre calendaire)
+  const monthOrder = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const byMonth = groupBy(data, d => d.month);
+  const monthKeys = Object.keys(byMonth).sort((a,b)=>monthOrder.indexOf(a)-monthOrder.indexOf(b));
+  const monthNb = monthKeys.map(k=>byMonth[k].length);
+
+  // Dimensions
+  const dimMap = {};
+  data.forEach(d => {
+    if (d.L && d.l && d.H) {
+      const key = `${d.L}×${d.l}×${d.H}`;
+      dimMap[key] = (dimMap[key]||0)+1;
+    }
+  });
+  const dimSorted = Object.entries(dimMap).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const dimLabels = dimSorted.map(([k])=>k);
+  const dimVals   = dimSorted.map(([,v])=>v);
+
+  // Draw charts
+  drawBar('cSemNb', semKeys, semNb, 'blue', 'Caisses');
+  drawBar('cSemVol', semKeys, semVol, 'cyan', 'Volume m³');
+  drawLine('cSemPoids', semKeys, semPoids, 'amber', 'Poids moy kg');
+  // Caisses par jour — courbe chronologique avec label JJ/MM + séparateur de mois
+  drawLineDays('cJour', dayLabelsWithMonth, dayNb);
+  // Caisses par mois — courbe
+  drawLine('cMois', monthKeys, monthNb, 'rose', 'Caisses');
+  drawBarH('cDim', dimLabels, dimVals);
+}
+
+/* ---- CHART HELPERS ---- */
+function destroyChart(id) { if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
+
+function drawBar(id, labels, data, col, label) {
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label, data,
+        backgroundColor: c(col, '0.7'),
+        borderColor: c(col, '1'),
+        borderWidth: 1,
+        borderRadius: 5,
+      }]
+    },
+    options: { ...JSON.parse(JSON.stringify(chartDefaults)) }
+  });
+}
+
+function drawLine(id, labels, data, col, label) {
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  charts[id] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{ label, data,
+        borderColor: c(col, '1'),
+        backgroundColor: c(col, '0.15'),
+        pointBackgroundColor: c(col, '1'),
+        tension: 0.35,
+        fill: true,
+        pointRadius: 4,
+      }]
+    },
+    options: { ...JSON.parse(JSON.stringify(chartDefaults)) }
+  });
+}
+
+// Courbe dédiée "par jour" : pas de rotation inutile, points plus petits, maintainAspectRatio false
+function drawLineDays(id, labels, data) {
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  charts[id] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Caisses',
+        data,
+        borderColor: c('green', '1'),
+        backgroundColor: c('green', '0.12'),
+        pointBackgroundColor: c('green', '1'),
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        fill: true,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const lbl = items[0].label;
+              return Array.isArray(lbl) ? lbl.join(' ') : lbl;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#64748b',
+            font: { family: 'DM Sans', size: 10 },
+            maxRotation: 45,
+            minRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 30,
+          },
+          grid: { color: '#1a2338' }
+        },
+        y: {
+          ticks: { color: '#64748b', font: { family: 'DM Sans', size: 11 } },
+          grid: { color: '#1a2338' },
+          beginAtZero: true,
+        }
+      }
+    }
+  });
+}
+
+function drawBarH(id, labels, data) {
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext('2d');
+  const palette = labels.map((_,i) => `hsl(${(i*28+200)%360},60%,55%)`);
+  charts[id] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Caisses', data,
+        backgroundColor: palette,
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      ...JSON.parse(JSON.stringify(chartDefaults)),
+      indexAxis: 'y',
+    }
+  });
+}
+
+function groupBy(arr, fn) {
+  return arr.reduce((m,d) => { const k=fn(d); (m[k]=m[k]||[]).push(d); return m; }, {});
+}
+
+/* ---- EVENTS ---- */
+document.getElementById('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) parseFile(e.target.files[0]);
+});
+const dz = document.getElementById('dropzone');
+dz.addEventListener('click', () => document.getElementById('fileInput').click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  if (e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]);
+});
+
+document.getElementById('selSemaine').addEventListener('change', render);
+document.getElementById('selIpo').addEventListener('change', render);
+document.getElementById('resetBtn').addEventListener('click', () => {
+  document.querySelectorAll('#selSemaine option, #selIpo option').forEach(o => o.selected = false);
+  render();
+});
+</script>
+</body>
+</html>
