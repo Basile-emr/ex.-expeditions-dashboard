@@ -118,13 +118,11 @@
   .kpi-card.c3 .kpi-val { color: var(--accent3); }
   .kpi-card.c4 .kpi-val { color: var(--success); }
   .kpi-lbl { font-size: 11px; color: var(--muted); }
-  .kpi-period {
-    font-size: 10px;
-    color: var(--accent);
-    margin-top: 5px;
-    font-family: 'Space Mono', monospace;
-    letter-spacing: .02em;
-    line-height: 1.4;
+  .kpi-since {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+    font-style: italic;
   }
 
   .charts-grid {
@@ -218,7 +216,7 @@
     <div class="kpi-card">
       <div class="kpi-val" id="kNb">–</div>
       <div class="kpi-lbl">Nombre de caisses</div>
-      <div class="kpi-period" id="kPeriode"></div>
+      <div class="kpi-since" id="kSince"></div>
     </div>
     <div class="kpi-card c2"> <div class="kpi-val" id="kVol">–</div>   <div class="kpi-lbl">Volume total (m³)</div></div>
     <div class="kpi-card c3"> <div class="kpi-val" id="kPoids">–</div> <div class="kpi-lbl">Poids brut total (kg)</div></div>
@@ -432,16 +430,14 @@ function render() {
   document.getElementById('kPoidsM').textContent = nb > 0 ? (poids/nb).toFixed(1)+' kg' : '–';
   document.getElementById('kVolM').textContent   = nb > 0 ? (vol/nb).toFixed(3)+' m³' : '–';
 
-  /* ── Période ── */
+  /* ── Depuis le [première date] ── */
   const dates = data.map(d => d.date).filter(Boolean).sort((a,b) => a - b);
-  const fmt = d => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-  const periodeEl = document.getElementById('kPeriode');
-  if (dates.length >= 2) {
-    periodeEl.textContent = fmt(dates[0]) + ' → ' + fmt(dates[dates.length - 1]);
-  } else if (dates.length === 1) {
-    periodeEl.textContent = fmt(dates[0]);
+  const sinceEl = document.getElementById('kSince');
+  if (dates.length >= 1) {
+    const fmt = d => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    sinceEl.textContent = 'depuis le ' + fmt(dates[0]);
   } else {
-    periodeEl.textContent = '';
+    sinceEl.textContent = '';
   }
 
   const bySem    = groupBy(data, d => 'S'+d.semaine);
