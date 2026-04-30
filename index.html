@@ -309,13 +309,17 @@ let activeMonth = null;
 const MONTH_ORDER = ['Janvier','Février','Mars','Avril','Mai','Juin',
                      'Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
+/* ══════════════════
+   PARSE XLSX
+   — On lit avec cellDates:true pour récupérer les vraies dates JS
+══════════════════ */
 function parseFile(file) {
   const reader = new FileReader();
   reader.onload = e => {
-    const wb      = XLSX.read(e.target.result, { type: 'array', cellDates: false });
+    /* cellDates:true → XLSX convertit les sériaux en objets Date UTC */
+    const wb      = XLSX.read(e.target.result, { type: 'array', cellDates: true });
     const ws      = wb.Sheets[wb.SheetNames[0]];
-    const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true  });
-    const fmtRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
+    const rows    = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true });
 
     rawData = [];
     let currentMonth = null;
@@ -328,35 +332,32 @@ function parseFile(file) {
       'NOVEMBRE':'Novembre','DÉCEMBRE':'Décembre','DECEMBRE':'Décembre'
     };
 
-    for (let i = 0; i < fmtRows.length; i++) {
-      const row    = fmtRows[i];
-      const rowRaw = rawRows[i] || [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
 
+      /* Détection ligne-mois */
       const maybeMonth = String(row[3] || '').trim().toUpperCase();
       if (MONTHS[maybeMonth]) { currentMonth = MONTHS[maybeMonth]; continue; }
 
       const sem = parseFloat(row[0]);
       if (isNaN(sem)) continue;
 
+      /* ── Parsing date ──
+         cellDates:true → row[1] est un objet Date en UTC
+         On récupère les composantes UTC pour éviter le décalage de fuseau */
       let dateObj = null;
-      const rawVal = rowRaw[1];
-      const fmtStr = String(row[1] || '').trim();
+      const rawVal = row[1];
 
-      if (typeof rawVal === 'number' && rawVal > 1000) {
-        try {
-          const p = XLSX.SSF.parse_date_code(rawVal);
-          if (p) dateObj = new Date(p.y, p.m - 1, p.d);
-        } catch(_) {}
-      }
-      if (!dateObj) {
-        const fr = fmtStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (rawVal instanceof Date && !isNaN(rawVal.getTime())) {
+        /* Date UTC → reconstruire en local pour éviter le décalage */
+        dateObj = new Date(rawVal.getUTCFullYear(), rawVal.getUTCMonth(), rawVal.getUTCDate());
+      } else if (typeof rawVal === 'string') {
+        /* Fallback chaîne "dd/mm/yyyy" */
+        const fr = rawVal.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
         if (fr) dateObj = new Date(+fr[3], +fr[2] - 1, +fr[1]);
       }
-      if (!dateObj) {
-        const d = new Date(fmtStr);
-        if (!isNaN(d.getTime()) && d.getFullYear() > 2000) dateObj = d;
-      }
 
+      /* Clé ISO locale */
       let isoDate = null;
       if (dateObj) {
         const y  = dateObj.getFullYear();
@@ -394,6 +395,9 @@ function parseFile(file) {
   reader.readAsArrayBuffer(file);
 }
 
+/* ══════════════════
+   FILTRES
+══════════════════ */
 function initFilters() {
   const semSet = [...new Set(rawData.map(d => d.semaine))].sort((a,b)=>a-b);
   const ipoSet = [...new Set(rawData.map(d => d.ipo))].sort();
@@ -415,6 +419,9 @@ function getFiltered() {
   );
 }
 
+/* ══════════════════
+   RENDER
+══════════════════ */
 function render() {
   const data = getFiltered();
 
@@ -440,21 +447,25 @@ function render() {
     sinceEl.textContent = '';
   }
 
+  /* Par semaine */
   const bySem    = groupBy(data, d => 'S'+d.semaine);
   const semKeys  = Object.keys(bySem).sort((a,b)=>+a.slice(1)-+b.slice(1));
   drawBar ('cSemNb',    semKeys, semKeys.map(k=>bySem[k].length),                                     'blue',  'Caisses');
   drawBar ('cSemVol',   semKeys, semKeys.map(k=>bySem[k].reduce((s,d)=>s+d.volume,0).toFixed(2)),     'cyan',  'Volume m³');
   drawLine('cSemPoids', semKeys, semKeys.map(k=>{const g=bySem[k];return (g.reduce((s,d)=>s+d.poidsBrut,0)/g.length).toFixed(1);}), 'amber', 'Poids moy');
 
+  /* Par mois */
   const byMonth   = groupBy(data, d => d.month);
   const monthKeys = Object.keys(byMonth).sort((a,b)=>MONTH_ORDER.indexOf(a)-MONTH_ORDER.indexOf(b));
   drawLine('cMois', monthKeys, monthKeys.map(k=>byMonth[k].length), 'rose', 'Caisses');
 
+  /* Dimensions */
   const dimMap = {};
   data.forEach(d => { if(d.L&&d.l&&d.H){const k=`${d.L}×${d.l}×${d.H}`;dimMap[k]=(dimMap[k]||0)+1;} });
   const dimSorted = Object.entries(dimMap).sort((a,b)=>b[1]-a[1]).slice(0,12);
   drawBarH('cDim', dimSorted.map(([k])=>k), dimSorted.map(([,v])=>v));
 
+  /* Drill-down par jour */
   byDayData = {};
   data.filter(d=>d.isoDate).forEach(d => {
     if (!byDayData[d.month]) byDayData[d.month] = {};
@@ -469,6 +480,9 @@ function render() {
   activeMonth ? drillInto(activeMonth) : showDayEmpty();
 }
 
+/* ══════════════════
+   DRILL-DOWN
+══════════════════ */
 function buildMonthPills(months) {
   const ctn = document.getElementById('monthPills');
   ctn.innerHTML = '';
@@ -537,6 +551,9 @@ function showDayEmpty() {
   document.getElementById('jourEmpty').style.display = 'flex';
 }
 
+/* ══════════════════
+   CHART HELPERS
+══════════════════ */
 function destroyChart(id) { if(charts[id]){charts[id].destroy();delete charts[id];} }
 
 function drawBar(id, labels, data, col, label) {
@@ -578,6 +595,9 @@ function groupBy(arr, fn) {
   return arr.reduce((m,d)=>{ const k=fn(d);(m[k]=m[k]||[]).push(d);return m; }, {});
 }
 
+/* ══════════════════
+   EVENTS
+══════════════════ */
 document.getElementById('fileInput').addEventListener('change', e => {
   if (e.target.files[0]) parseFile(e.target.files[0]);
 });
