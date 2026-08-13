@@ -437,11 +437,11 @@ function render() {
   document.getElementById('kPoidsM').textContent = nb > 0 ? (poids/nb).toFixed(1)+' kg' : '–';
   document.getElementById('kVolM').textContent   = nb > 0 ? (vol/nb).toFixed(3)+' m³' : '–';
 
-  /* ── Depuis le [première date] ── */
+  /* ── Depuis le [première date complète] ── */
   const dates = data.map(d => d.date).filter(Boolean).sort((a,b) => a - b);
   const sinceEl = document.getElementById('kSince');
   if (dates.length >= 1) {
-    const fmt = d => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const fmt = d => d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     sinceEl.textContent = 'depuis le ' + fmt(dates[0]);
   } else {
     sinceEl.textContent = '';
