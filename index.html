@@ -149,7 +149,7 @@
     min-height: 200px;
   }
 
-  .month-pills {
+  .week-pills {
     display: flex; flex-wrap: wrap; gap: 5px;
     margin-bottom: 8px; flex-shrink: 0;
   }
@@ -159,8 +159,21 @@
     background: var(--surface2); transition: all .18s; white-space: nowrap;
     font-family: 'DM Sans', sans-serif;
   }
-  .pill:hover  { border-color: var(--success); color: var(--success); }
-  .pill.active { background: var(--success); border-color: var(--success); color: #000; }
+  .pill:hover  { border-color: var(--accent); color: var(--accent); }
+  .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .month-pills {
+    display: flex; flex-wrap: wrap; gap: 5px;
+    margin-bottom: 8px; flex-shrink: 0;
+  }
+  .month-pill {
+    padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); color: var(--muted);
+    background: var(--surface2); transition: all .18s; white-space: nowrap;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .month-pill:hover  { border-color: var(--success); color: var(--success); }
+  .month-pill.active { background: var(--success); border-color: var(--success); color: #000; }
 
   .day-empty {
     display: flex; align-items: center; justify-content: center; height: 100%;
@@ -168,6 +181,25 @@
     flex-direction: column; gap: 8px; text-align: center;
   }
   .day-empty span { font-size: 24px; }
+
+  .table-wrap {
+    overflow-x: auto; flex: 1;
+  }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 11px;
+  }
+  table thead {
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+  }
+  table th {
+    color: var(--muted); text-align: left; padding: 8px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em;
+  }
+  table td {
+    padding: 7px 8px; border-bottom: 1px solid var(--border);
+  }
+  table tbody tr:hover { background: var(--surface2); }
+  table td:first-child { color: var(--accent); font-weight: 600; }
 
   @media (max-width: 860px) {
     header { padding: 14px 18px; }
@@ -229,7 +261,29 @@
 
     <div class="chart-card">
       <div class="chart-card-header"><h3>Caisses par semaine</h3></div>
+      <div class="week-pills" id="weekPills"></div>
       <div class="canvas-wrap"><canvas id="cSemNb"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-card-header"><h3>Listing des caisses (IPO)</h3></div>
+      <div class="table-wrap">
+        <div class="day-empty" id="weekEmpty">
+          <span>📋</span>
+          Cliquez sur une semaine<br>pour afficher le listing
+        </div>
+        <table id="weekTable" style="display:none;">
+          <thead>
+            <tr>
+              <th>IPO</th>
+              <th>Volume (m³)</th>
+              <th>Poids (kg)</th>
+              <th>Dimensions (L×l×H)</th>
+            </tr>
+          </thead>
+          <tbody id="weekTableBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="chart-card">
@@ -304,7 +358,9 @@ function baseOpts(xExtra) {
 let rawData    = [];
 let charts     = {};
 let byDayData  = {};
+let byWeekData = {};
 let activeMonth = null;
+let activeWeek  = null;
 
 const MONTH_ORDER = ['Janvier','Février','Mars','Avril','Mai','Juin',
                      'Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -465,6 +521,20 @@ function render() {
   const dimSorted = Object.entries(dimMap).sort((a,b)=>b[1]-a[1]).slice(0,12);
   drawBarH('cDim', dimSorted.map(([k])=>k), dimSorted.map(([,v])=>v));
 
+  /* Drill-down par semaine */
+  byWeekData = {};
+  data.forEach(d => {
+    const weekKey = 'S' + d.semaine;
+    if (!byWeekData[weekKey]) byWeekData[weekKey] = [];
+    byWeekData[weekKey].push(d);
+  });
+
+  const weekKeys = Object.keys(byWeekData).sort((a,b)=>+a.slice(1)-+b.slice(1));
+  buildWeekPills(weekKeys);
+
+  if (activeWeek && !byWeekData[activeWeek]) activeWeek = null;
+  activeWeek ? drillIntoWeek(activeWeek) : showWeekEmpty();
+
   /* Drill-down par jour */
   byDayData = {};
   data.filter(d=>d.isoDate).forEach(d => {
@@ -481,24 +551,79 @@ function render() {
 }
 
 /* ══════════════════
-   DRILL-DOWN
+   WEEK DRILL-DOWN
+══════════════════ */
+function buildWeekPills(weeks) {
+  const ctn = document.getElementById('weekPills');
+  ctn.innerHTML = '';
+  weeks.forEach(w => {
+    const pill = document.createElement('button');
+    pill.className = 'pill' + (w === activeWeek ? ' active' : '');
+    const total = byWeekData[w].length;
+    pill.textContent = `${w} (${total})`;
+    pill.onclick = () => {
+      if (activeWeek === w) {
+        activeWeek = null;
+        document.querySelectorAll('#weekPills .pill').forEach(p=>p.classList.remove('active'));
+        showWeekEmpty();
+      } else {
+        activeWeek = w;
+        document.querySelectorAll('#weekPills .pill').forEach(p=>p.classList.remove('active'));
+        pill.classList.add('active');
+        drillIntoWeek(w);
+      }
+    };
+    ctn.appendChild(pill);
+  });
+}
+
+function drillIntoWeek(week) {
+  const weekData = byWeekData[week] || [];
+  
+  document.getElementById('weekEmpty').style.display = 'none';
+  const table = document.getElementById('weekTable');
+  table.style.display = 'table';
+
+  const tbody = document.getElementById('weekTableBody');
+  tbody.innerHTML = '';
+
+  weekData.forEach(row => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${row.ipo}</td>
+      <td>${row.volume.toFixed(3)}</td>
+      <td>${row.poidsBrut.toLocaleString('fr-FR')}</td>
+      <td>${row.L}×${row.l}×${row.H}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function showWeekEmpty() {
+  const table = document.getElementById('weekTable');
+  table.style.display = 'none';
+  document.getElementById('weekEmpty').style.display = 'flex';
+}
+
+/* ══════════════════
+   DAY DRILL-DOWN (mois)
 ══════════════════ */
 function buildMonthPills(months) {
   const ctn = document.getElementById('monthPills');
   ctn.innerHTML = '';
   months.forEach(m => {
     const pill = document.createElement('button');
-    pill.className = 'pill' + (m === activeMonth ? ' active' : '');
+    pill.className = 'month-pill' + (m === activeMonth ? ' active' : '');
     const total = Object.values(byDayData[m]).reduce((s,arr)=>s+arr.length, 0);
     pill.textContent = `${m} (${total})`;
     pill.onclick = () => {
       if (activeMonth === m) {
         activeMonth = null;
-        document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+        document.querySelectorAll('#monthPills .month-pill').forEach(p=>p.classList.remove('active'));
         showDayEmpty();
       } else {
         activeMonth = m;
-        document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+        document.querySelectorAll('#monthPills .month-pill').forEach(p=>p.classList.remove('active'));
         pill.classList.add('active');
         drillInto(m);
       }
